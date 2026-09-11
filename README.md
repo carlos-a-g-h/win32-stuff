@@ -1,2 +1,6 @@
 # win32-stuff
-A colleciton of modules and scripts for dealing with windows internal stuff
+
+## win32_UEFI.py
+
+
+A python module that lets you modify the EFI/UEFI firmware boot options. It uses ctypes
