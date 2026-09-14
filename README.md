@@ -23,4 +23,3 @@ What works on a higher level or for specific EFI/UEFI variables and functionalit
 What is still not finished?
 
 - Creating custom boot entries for custom EFI applications and bootloaders
-- Parse OptionalData depending on specific metadata (for example, Windows metadata)
