@@ -4,7 +4,9 @@
 # THIS IS A WORK IN PROGRESS
 
 # WARNING:
-# IF YOU BRICK YOUR FIRMWARE, OR SOMEONE ELSE'S FIRMWARE, THAT'S ON YOU, NOT ME
+# IF YOU BRICK YOUR FIRMWARE, OR SOMEONE ELSE'S, THAT'S ON YOU, NOT ME
+# IF TRAMONTINA MAKES KNIVES, THEY CAN'T BE HELD ACCOUNTABLE FOR ALL
+# THE MURDERS THAT INVOLVE A TRAMONTINA KITCHEN KNIFE
 
 import ctypes
 from ctypes import (
@@ -171,7 +173,7 @@ def get_fwtype(
 			f" error: {err}"
 		)
 		if assertion:
-			raise WinError(msg_err)
+			raise WinError(err)
 
 		print(msg_err)
 		return None
@@ -192,6 +194,7 @@ def get_efi_variable(
 	data:Optional[bytes]=None
 
 	msg_err:Optional[str]=None
+	err=-1
 
 	while True:
 
@@ -231,7 +234,7 @@ def get_efi_variable(
 			print(msg_err)
 			return None
 
-		raise WinError(msg_err)
+		raise WinError(err)
 
 	return data
 
@@ -276,7 +279,7 @@ def set_efi_variable(
 			print(msg_err)
 			return False
 
-		raise WinError(msg_err)
+		raise WinError(err)
 
 	return done
 
@@ -499,10 +502,13 @@ def parse_efi_filepathlist_node_filepath(
 	# Size ?
 
 	d_filepath_end=-1
-	if not x_nodesize==-1:
+
+	has_nodesize=(not x_nodesize==-1)
+
+	if has_nodesize:
 		d_filepath_end=x_nodesize-4
 
-	if x_nodesize==-1:
+	if not has_nodesize:
 		d_filepath_end=data[offset:].find(_CONST_NULLTERM)
 		if d_filepath_end==-1:
 			return {}
@@ -510,7 +516,10 @@ def parse_efi_filepathlist_node_filepath(
 		if not d_filepath_end%2==0:
 			d_filepath_end=d_filepath_end+1
 
-	d_filepath_ok=data[offset:offset+d_filepath_end].decode(_ENC_UTF16LE)
+	# Minus two so that the null terminator gets excluded
+	# print("FILEPATH (raw)",data[offset:offset+d_filepath_end-2])
+
+	d_filepath_ok=data[offset:offset+d_filepath_end-2].decode(_ENC_UTF16LE)
 
 	offset=offset+d_filepath_end
 
@@ -547,11 +556,12 @@ def parse_efi_filepathlist_type_0x04(
 
 		if data[offset:offset+2]==_EFI_NODE_HARD_DRIVE:
 
-			print("Node 04 01")
+			if debug:
+				print("Detected: Node 04 01")
 
 			node_hdd=parse_efi_filepathlist_node_harddrive(
 				data,data_offset=offset,
-				debug=True
+				debug=debug
 			)
 			# print(node_hdd)
 			payload_size=node_hdd["payload_size"]
@@ -564,11 +574,12 @@ def parse_efi_filepathlist_type_0x04(
 
 		if data[offset:offset+2]==_EFI_NODE_FILEPATH:
 
-			print("Node 04 04")
+			if debug:
+				print("Detected: Node 04 04")
 
 			node_fpath=parse_efi_filepathlist_node_filepath(
 				data,data_offset=offset,
-				debug=True
+				debug=debug
 			)
 			payload_size=node_fpath["payload_size"]
 
@@ -579,6 +590,9 @@ def parse_efi_filepathlist_type_0x04(
 			continue
 
 		if data[offset:offset+4]==_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH:
+
+			if debug:
+				print("Detected: End of Device Path Node")
 
 			nodes.append({"node":_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH})
 
@@ -668,7 +682,7 @@ def hl_get_efi_BootCurrent(
 		"BootCurrent",
 		assertion=assertion
 	)
-	if data is None:
+	if not isinstance(data,(bytes,bytearray)):
 		return None
 
 	data_size=len(data)
@@ -886,6 +900,10 @@ def hl_get_efi_BootEntry(
 
 		return data_ok
 
+	# Field 5
+	# OptionalData
+	# This is the tail of the Boot#### entry
+
 	data_optional=data_bytes[offset:]
 
 	data_ok.update({"raw_optdata":data_optional})
@@ -902,7 +920,13 @@ if __name__=="__main__":
 
 	from sys import exit as sys_exit
 
-	# If you get a 1300 error, run as admin
+	# NOTE:
+	# If you get a 1314 error is because you need to run this script as
+	# Administrator or use the module as Administrator
+	# If you get 1300 error, is because you also need to run the function
+	# called "init_gain_aditional_privileges()" so that the entire process
+	# is authorized to do modifications on parts of the system that require
+	# privileges beyond what the regular Administrator user already gives
 
 	init_gain_aditional_privileges()
 
