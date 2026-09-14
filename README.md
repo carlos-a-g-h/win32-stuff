@@ -13,13 +13,14 @@ What works on a lower level?
 - You can determine wether the system was booted using UEFI or Legacy
 - You can do raw reading and writing of EFI variables
 
-What works on a higher level?
+What works on a higher level or for specific EFI/UEFI variables and functionalities?
 
-- You can list all the firmware boot entries (BootOrder variable)
-- You can read and write the BootNext EFI variable
-- You can read boot entries (partial support)
+- You can read the "BootCurrent" EFI variable
+- You can read and write the "BootNext" EFI variable
+- You can list all the firmware boot entries ("BootOrder" variable)
+- You can read Boot entres ("Boot####" variables). At the moment I am focusing on type 4 subtype 4
 
-What is still in progress?
+What is still not finished?
 
-- Read boot entries propperly (the Optional Data is still not being parsed)
 - Creating custom boot entries for custom EFI applications and bootloaders
+- Parse OptionalData depending on specific metadata (for example, Windows metadata)

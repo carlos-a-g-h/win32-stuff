@@ -19,17 +19,22 @@ import win32api
 import win32con
 import win32security
 
-_k32="kernel32"
+_KERNEL32="kernel32"
+
+_ENC_UTF16LE="utf-16-le"
+
+_CONST_NULLTERM=b"\x00\x00"
 
 _EFI_GLOBALVAR="{8BE4DF61-93CA-11D2-AA0D-00E098032B8C}"
+
 _EFI_VAR_NON_VOLATILE=0x00000001
 _EFI_VAR_BOOTSERVICE_ACCESS=0x00000002
 _EFI_VAR_RUNTIME_ACCESS=0x00000004
 
-_CONST_NULLTERM=b"\x00\x00"
-_CONST_END_OF_ENTIRE_DEVICE_PATH=b"\x7f\xff\x04\x00"
-
-_ENC_UTF16LE="utf-16-le"
+# Bytes
+_EFI_NODE_HARD_DRIVE=b"\x04\x01"
+_EFI_NODE_FILEPATH=b"\x04\x04"
+_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH=b"\x7f\xff\x04\x00"
 
 ###############################################################################
 
@@ -41,12 +46,13 @@ _Win32_SetFwEnvVarExW="SetFirmwareEnvironmentVariableExW"
 
 def import_GetFwType()->Callable:
 
-	kernel32:WinDLL=WinDLL(
-		_k32,use_last_error=True
+	k32:WinDLL=WinDLL(
+		_KERNEL32,
+		use_last_error=True
 	)
 
 	fun:Callable=getattr(
-		kernel32,
+		k32,
 		_Win32_GetFwType
 	)
 	fun.argtypes=[ctypes.POINTER(wintypes.DWORD)]
@@ -56,13 +62,13 @@ def import_GetFwType()->Callable:
 
 def import_GetFwEnVarW()->Callable:
 
-	kernel32:WinDLL=WinDLL(
-		_k32,use_last_error=True
+	k32:WinDLL=WinDLL(
+		_KERNEL32,
+		use_last_error=True
 	)
 
 	fun:Callable=getattr(
-		kernel32,
-		_Win32_GetFwEnVarW
+		k32,_Win32_GetFwEnVarW
 	)
 
 	fun.argtypes=[
@@ -80,13 +86,13 @@ def import_GetFwEnVarW()->Callable:
 
 def import_SetFwEnvVarExW()->Callable:
 
-	kernel32:WinDLL=WinDLL(
-		_k32,use_last_error=True
+	k32:WinDLL=WinDLL(
+		_KERNEL32,
+		use_last_error=True
 	)
 
 	fun:Callable=getattr(
-		kernel32,
-		_Win32_SetFwEnvVarExW
+		k32,_Win32_SetFwEnvVarExW
 	)
 
 	fun.argtypes=[
@@ -145,7 +151,7 @@ def init_gain_aditional_privileges(assertion:bool=True)->bool:
 
 ###############################################################################
 
-# Lower level functions
+# Simple and lower level functions
  
 def get_fwtype(
 		fun_GetFirmwareType:Callable,
@@ -174,7 +180,7 @@ def get_fwtype(
 	# print("fwtype:",res_ok)
 	return res_ok
 
-def get_efivariable(
+def get_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		varname:str,efiguid:str=_EFI_GLOBALVAR,
 		assertion:bool=True
@@ -276,7 +282,7 @@ def set_efi_variable(
 
 ###############################################################################
 
-# Parers
+# Parsing functions
 
 def parse_efi_filepathlist_node_header(
 		data:bytes,
@@ -352,7 +358,11 @@ def parse_efi_filepathlist_node_harddrive(
 			data,data_offset=data_offset,
 			debug=debug
 		)
-		if not (x_type==4 and x_subtype==1 and x_nodesize==42):
+		if not (
+			x_type==4 and
+			x_subtype==1 and
+			x_nodesize==42
+		):
 			return {}
 
 	offset=data_offset+4
@@ -442,16 +452,18 @@ def parse_efi_filepathlist_node_harddrive(
 
 	offset=offset+readmax
 
+	progress=offset-data_offset
+
 	return {
-		"node":1,
+		"node":_EFI_NODE_HARD_DRIVE,
 		"partition_number":d_partnum_ok,
 		"partition_start_lba:":d_partstartlba_ok,
 		"partition_size":d_partsize_ok,
 		"partition_guid":d_partguid_ok,
 		"mbrtype":d_mbrtype_ok,
 		"signtype":d_signtype_ok,
-		"payload_size":offset-data_offset,
-		"payload_end":data_offset+offset
+		"payload_size":progress,
+		"payload_end":data_offset+progress
 	}
 
 def parse_efi_filepathlist_node_filepath(
@@ -502,11 +514,13 @@ def parse_efi_filepathlist_node_filepath(
 
 	offset=offset+d_filepath_end
 
+	progress=offset-data_offset
+
 	return {
-		"node":4,
+		"node":_EFI_NODE_FILEPATH,
 		"filepath":d_filepath_ok,
-		"payload_size":offset-data_offset,
-		"payload_end":data_offset+offset
+		"payload_size":progress,
+		"payload_end":data_offset+progress
 	}
 
 def parse_efi_filepathlist_type_0x04(
@@ -531,7 +545,7 @@ def parse_efi_filepathlist_type_0x04(
 		if offset>maxlen:
 			break
 
-		if data[offset:offset+2]==b"\x04\x01":
+		if data[offset:offset+2]==_EFI_NODE_HARD_DRIVE:
 
 			print("Node 04 01")
 
@@ -548,7 +562,7 @@ def parse_efi_filepathlist_type_0x04(
 
 			continue
 
-		if data[offset:offset+2]==b"\x04\x04":
+		if data[offset:offset+2]==_EFI_NODE_FILEPATH:
 
 			print("Node 04 04")
 
@@ -564,11 +578,13 @@ def parse_efi_filepathlist_type_0x04(
 
 			continue
 
-		if data[offset:offset+4]==_CONST_END_OF_ENTIRE_DEVICE_PATH:
+		if data[offset:offset+4]==_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH:
 
-			nodes.append({"node":-1})
+			nodes.append({"node":_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH})
 
 			break
+
+		nodes.append({"nodes":data[offset:]})
 
 		break
 
@@ -621,7 +637,7 @@ def hl_get_efi_BootOrder(
 
 	# Get the value inside the "BootOrder" EFI Variable
 
-	data:Optional[bytes]=get_efivariable(
+	data:Optional[bytes]=get_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootOrder",
 		assertion=assertion
@@ -640,6 +656,44 @@ def hl_get_efi_BootOrder(
 
 	return tuple(boot_order)
 
+def hl_get_efi_BootCurrent(
+		fun_GetFirmwareEnvironmentVariableW:Callable,
+		assertion:bool=True
+	)->Optional[str]:
+
+	# Get the value inside the "BootCUrrent" EFI variable
+
+	data:Optional[bytes]=get_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW,
+		"BootCurrent",
+		assertion=assertion
+	)
+	if data is None:
+		return None
+
+	data_size=len(data)
+
+	if not data_size==2:
+		msg_err=(
+			"The value for BootNext must"
+			" contain exactly 2 bytes,"
+			f" but recieved {data_size}"
+		)
+		if not assertion:
+			print(msg_err)
+			return None
+
+		raise Exception(msg_err)
+
+	data_unpkg=struct.unpack(
+		"<H",data
+	)
+	print(data_unpkg)
+
+	boot_entry=data_unpkg[0]
+
+	return f"Boot{boot_entry:04X}"
+
 def hl_get_efi_BootNext(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		assertion:bool=True
@@ -647,7 +701,7 @@ def hl_get_efi_BootNext(
 
 	# Get the value inside the "BootNext" EFI variable
 
-	data:Optional[bytes]=get_efivariable(
+	data:Optional[bytes]=get_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootNext",
 		assertion=assertion
@@ -721,15 +775,21 @@ def hl_get_efi_BootEntry(
 	if not boot_entry.startswith("Boot"):
 		return {}
 
-	data_bytes=get_efivariable(
+	data_bytes=get_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry,assertion=assertion
 	)
 	if data_bytes is None:
 		return {}
 
+	data_bytes_size=len(data_bytes)
+
 	if debug:
-		print("RAW DATA:",data_bytes)
+		print(
+			"LEN; RAW DATA:",
+			data_bytes_size,
+			data_bytes
+		)
 
 	# Parsing according to the EFI_LOAD_OPTION specification
 
@@ -813,11 +873,24 @@ def hl_get_efi_BootEntry(
 
 	offset=offset+data_fpathlen_ok
 
-	return {
+	data_ok={
 		"raw_attributes":data_attributes,
 		"description":data_description_ok,
 		"filepath_list":data_fpathlist_ok,
 	}
+
+	if not offset<data_bytes_size:
+
+		if debug:
+			print("OptionalData not found")
+
+		return data_ok
+
+	data_optional=data_bytes[offset:]
+
+	data_ok.update({"raw_optdata":data_optional})
+
+	return data_ok
 
 ###############################################################################
 
@@ -828,6 +901,8 @@ if __name__=="__main__":
 	# Some tests
 
 	from sys import exit as sys_exit
+
+	# If you get a 1300 error, run as admin
 
 	init_gain_aditional_privileges()
 
@@ -841,56 +916,28 @@ if __name__=="__main__":
 	GetFwEnVarW=import_GetFwEnVarW()
 	SetFwEnvVarExW=import_SetFwEnvVarExW()
 
+	# Get current system
+
+	boot_current=hl_get_efi_BootCurrent(GetFwEnVarW)
+	print("\nBootCurrent",boot_current)
+
 	# List Boot order
 
 	boot_order=hl_get_efi_BootOrder(GetFwEnVarW)
-	print("Boot order:",boot_order)
+	print("\nBoot order:",boot_order)
 
-	result=hl_get_efi_BootEntry(
-		GetFwEnVarW,
-		boot_order[0],
-		debug=True
-	)
-	print("DETAILS:",result)
+	# List boot entries
 
-	sys_exit(0)
+	print("\nBOOT ENTRIES:")
 
-	# boot_entry_with_grub:Optional[str]=None
+	more_verbose=False
 
-	# # List boot entries
+	for boot_entry in boot_order:
 
-	# print("BOOT ENTRIES:")
-	# for boot_entry in boot_order:
-
-	# 	print("\nBOOT ENTRY:",boot_entry)
-	# 	result=hl_get_efi_BootEntry(
-	# 		GetFwEnVarW,
-	# 		boot_entry,
-	# 		debug=True
-	# 	)
-	# 	print("DETAILS:",result)
-
-	# 	# Grab a specific boot entry
-
-	# 	if not isinstance(result,list):
-	# 		continue
-
-	# 	if not len(result)==1:
-	# 		continue
-
-	# 	x=result[0].get("path")
-	# 	if not isinstance(x,str):
-	# 		continue
-
-	# 	if ("grub2" in x) and ("efi" in x):
-	# 		print("FOUND GRUB2 EFI in:",boot_entry)
-	# 		boot_entry_with_grub=boot_entry
-	# 		break
-
-
-	# done=hl_set_efi_BootNext(SetFwEnvVarExW,boot_entry_with_grub)
-	# print("BootNext set?",done)
-
-	# # boot_next=hl_get_efi_BootNext(GetFwEnVarW)
-	# # print("Next system to boot:",boot_next)
-
+		print("\nBOOT ENTRY:",boot_entry)
+		result=hl_get_efi_BootEntry(
+			GetFwEnVarW,
+			boot_entry,
+			debug=more_verbose
+		)
+		print("DETAILS:",result)
