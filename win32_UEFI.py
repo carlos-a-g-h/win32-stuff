@@ -4,22 +4,17 @@
 # THIS IS A WORK IN PROGRESS
 
 # WARNING:
-# IF YOU BRICK YOUR FIRMWARE, OR SOMEONE ELSE'S FIRMWARE THAT'S ON YOU, NOT ME
+# IF YOU BRICK YOUR FIRMWARE, OR SOMEONE ELSE'S FIRMWARE, THAT'S ON YOU, NOT ME
 
 import ctypes
 from ctypes import (
-	Array,
-	WinDLL,
-	WinError,
-	get_last_error,
-	wintypes,
+	Array,WinDLL,WinError,
+	get_last_error,wintypes,
 )
 
 import struct
-from typing import (
-	Callable,
-	Optional
-)
+from typing import Callable,Optional
+from uuid import UUID
 import win32api
 import win32con
 import win32security
@@ -30,6 +25,11 @@ _EFI_GLOBALVAR="{8BE4DF61-93CA-11D2-AA0D-00E098032B8C}"
 _EFI_VAR_NON_VOLATILE=0x00000001
 _EFI_VAR_BOOTSERVICE_ACCESS=0x00000002
 _EFI_VAR_RUNTIME_ACCESS=0x00000004
+
+_CONST_NULLTERM=b"\x00\x00"
+_CONST_END_OF_ENTIRE_DEVICE_PATH=b"\x7f\xff\x04\x00"
+
+_ENC_UTF16LE="utf-16-le"
 
 ###############################################################################
 
@@ -110,8 +110,9 @@ def import_SetFwEnvVarExW()->Callable:
  
 def init_gain_aditional_privileges(assertion:bool=True)->bool:
 
-	# Enables aditional privileges that are necessary to work with stuff such as
-	# interacting with EFI/UEFI firmware variables for example
+	# Gain aditional privileges that are necessary to work with stuff that
+	# Windows might be consider very sensitive, such as, interacting with
+	# EFI/UEFI firmware variables for example
 
 	token=win32security.OpenProcessToken(
 		win32api.GetCurrentProcess(),
@@ -195,7 +196,6 @@ def get_efivariable(
 			buff,
 			size
 		)
-		# print("howmuch?",howmuch)
 		if howmuch>0:
 			data=buff.raw[:howmuch]
 			break
@@ -276,76 +276,303 @@ def set_efi_variable(
 
 ###############################################################################
 
-# Some parsers
+# Parers
 
-def parse_efi_filepath_list_0x04_0x04(data: bytes) -> dict:
+def parse_efi_filepathlist_node_header(
+		data:bytes,
+		data_offset:int=0,
+		debug:bool=False
+	)->tuple:
 
-	# Parses type 0x04 and subtype 0x04
-	# Type 0x04 is Media Device Path
-	# Subtype 0x04 is File Path
+	# Returns: ( Type , SubType, Node Size )
 
-	fpath_lst=bytes(data)
+	offset=data_offset
 
-	print("DATA:",fpath_lst)
+	# TYPE      SUBTYPE   END OF HEADER
+	# UINT8     UINT8     UINT16 LE
+	# Offset 0  Offset 1  Offset 2
+	# Size 1    Size 1    Size 2
 
-	results = []
-	offset = 0
-	total_size = len(fpath_lst)
+	# Type
 
-	while offset < total_size:
+	readmax=1
 
-		print("loop",offset)
+	x_type=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
 
-		if total_size - offset < 4:
-			raise ValueError("Incomplete device-path node header")
+	offset=offset+readmax
 
-		node_type = fpath_lst[offset]
-		node_subtype = fpath_lst[offset + 1]
-		node_length = struct.unpack_from(
-			"<H",
-			fpath_lst,
-			offset + 2,
-		)[0]
+	# Subtype
 
-		if node_length < 4:
-			raise ValueError(
-				f"Invalid node length {node_length} at offset {offset}"
-			)
+	readmax=1
 
-		node_end = offset + node_length
+	x_subtype=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
 
-		if node_end > total_size:
-			raise ValueError(
-				f"Node at offset {offset} exceeds the device-path list"
-			)
+	offset=offset+readmax
 
-		# End of the complete device path
-		if node_type == 0x7F and node_subtype == 0xFF:
+	# Node size
+
+	readmax=2
+
+	x_nodesize=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+
+	if debug:
+		print("type",x_type)
+		print("subtype",x_subtype)
+		print("node size",x_nodesize)
+
+	return (x_type,x_subtype,x_nodesize)
+
+def parse_efi_filepathlist_node_harddrive(
+		data:bytes,
+		data_offset:int=0,
+		unsafe:bool=False,
+		debug:bool=False
+	)->dict:
+
+	# NOTE:
+
+	# TYPE               SUBTYPE             END OF HEADER
+	# Media Device Path  Hard drive subtype  Node Length
+	# UINT8              UINT8               UINT16 LE
+	# Offset 0           Offset 1            Offset 2
+	# Size 1             Size 1              Size 2
+	# Bytes 04           Bytes 01
+
+	if not unsafe:
+		x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_header(
+			data,data_offset=data_offset,
+			debug=debug
+		)
+		if not (x_type==4 and x_subtype==1 and x_nodesize==42):
+			return {}
+
+	offset=data_offset+4
+
+	# Partition Number
+	# UINT32 LE
+	# Offset 0
+	# Size 4
+
+	readmax=4
+
+	d_partnum=data[offset:offset+readmax]
+	d_partnum_ok=int.from_bytes(d_partnum,"little")
+	if debug:
+		print("PARTNUM:",d_partnum)
+		print("PARTNUM (OK):",d_partnum_ok)
+
+	offset=offset+readmax
+
+	# Partition start LBA
+	# UINT64
+	# Size 8
+
+	readmax=8
+
+	d_pstartlba=data[offset:offset+readmax]
+	d_partstartlba_ok=int.from_bytes(d_pstartlba,"little")
+	if debug:
+		print("PART START LBA:",d_pstartlba)
+		print("PART START LBA (OK):",d_partstartlba_ok)
+
+	offset=offset+readmax
+
+	# Partition size
+	# UINT64
+	# Size 8
+
+	readmax=8
+
+	d_partsize=data[offset:offset+readmax]
+	d_partsize_ok=int.from_bytes(d_partsize,"little")
+	if debug:
+		print("PART SIZE:",d_partsize)
+		print("PART SIZE (OK):",d_partsize_ok)
+
+	offset=offset+readmax
+
+	# GPT Partition GUID
+	# raw 16-byte sig
+	# Size 16
+
+	readmax=16
+
+	d_partguid=data[offset:offset+readmax]
+	d_partguid_ok=str(UUID(bytes_le=d_partguid))
+	if debug:
+		print("PART GUID:",d_partguid)
+		print("PART GUID (OK):",d_partguid_ok)
+
+	offset=offset+readmax
+
+	# MBR Type
+	# UINT8
+	# Size 1
+
+	readmax=1
+
+	d_mbrtype=data[offset:offset+readmax]
+	d_mbrtype_ok=int.from_bytes(d_mbrtype,"little")
+	if debug:
+		print("MBRTYPE:",d_mbrtype)
+		print("MBRTYPE (OK):",d_mbrtype_ok)
+
+	offset=offset+readmax
+
+	# Signature Type
+	# UINT8
+	# Size 1
+
+	readmax=1
+
+	d_signtype=data[offset:offset+readmax]
+	d_signtype_ok=int.from_bytes(d_signtype,"little")
+	if debug:
+		print("SIGNTYPE:",d_signtype)
+		print("SIGNTYPE (OK):",d_signtype_ok)
+
+	offset=offset+readmax
+
+	return {
+		"node":1,
+		"partition_number":d_partnum_ok,
+		"partition_start_lba:":d_partstartlba_ok,
+		"partition_size":d_partsize_ok,
+		"partition_guid":d_partguid_ok,
+		"mbrtype":d_mbrtype_ok,
+		"signtype":d_signtype_ok,
+		"payload_size":offset-data_offset,
+		"payload_end":data_offset+offset
+	}
+
+def parse_efi_filepathlist_node_filepath(
+		data:bytes,
+		data_offset:int=0,
+		unsafe:bool=False,
+		debug:bool=False
+	)->dict:
+
+	# NOTE:
+
+	# TYPE               SUBTYPE           END OF HEADER
+	# Media Device Path  Filepath subtype  Node Length
+	# UINT8              UINT8             UINT16 LE
+	# Offset 0           Offset 1          Offset 2
+	# Size 1             Size 1            Size 2
+	# Bytes 04           Bytes 04
+
+	x_nodesize=-1
+	if not unsafe:
+		x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_header(
+			data,data_offset=data_offset,
+			debug=debug
+		)
+		if not (x_type==4 and x_subtype==4):
+			return {}
+
+	offset=data_offset+4
+
+	# Filepath
+	# UINT32 LE NT
+	# Offset 0
+	# Size ?
+
+	d_filepath_end=-1
+	if not x_nodesize==-1:
+		d_filepath_end=x_nodesize-4
+
+	if x_nodesize==-1:
+		d_filepath_end=data[offset:].find(_CONST_NULLTERM)
+		if d_filepath_end==-1:
+			return {}
+
+		if not d_filepath_end%2==0:
+			d_filepath_end=d_filepath_end+1
+
+	d_filepath_ok=data[offset:offset+d_filepath_end].decode(_ENC_UTF16LE)
+
+	offset=offset+d_filepath_end
+
+	return {
+		"node":4,
+		"filepath":d_filepath_ok,
+		"payload_size":offset-data_offset,
+		"payload_end":data_offset+offset
+	}
+
+def parse_efi_filepathlist_type_0x04(
+		data:bytes,
+		data_offset:int=0,
+		debug:bool=False
+	)->list:
+
+	offset=data_offset
+	maxlen=len(data)
+
+	nodes=[]
+
+	while True:
+
+		if debug:
+			print("PROGRESS:",offset,"/",maxlen)
+			print("REMAINING:",data[offset:])
+	
+		if offset==maxlen:
+			break
+		if offset>maxlen:
 			break
 
-		# Media Device Path / File Path node
-		if node_type == 0x04 and node_subtype == 0x04:
-			path_data = fpath_lst[offset + 4:node_end]
+		if data[offset:offset+2]==b"\x04\x01":
 
-			path = path_data.decode(
-				"utf-16-le",
-				errors="replace",
-			).split("\x00", 1)[0]
+			print("Node 04 01")
 
-			results.append({
-				"offset": offset,
-				"type": node_type,
-				"subtype": node_subtype,
-				"node_length": node_length,
-				"path": path,
-			})
+			node_hdd=parse_efi_filepathlist_node_harddrive(
+				data,data_offset=offset,
+				debug=True
+			)
+			# print(node_hdd)
+			payload_size=node_hdd["payload_size"]
 
-		offset = node_end
+			offset=offset+payload_size
+	
+			nodes.append(node_hdd)
 
-	return results
+			continue
 
+		if data[offset:offset+2]==b"\x04\x04":
 
+			print("Node 04 04")
 
+			node_fpath=parse_efi_filepathlist_node_filepath(
+				data,data_offset=offset,
+				debug=True
+			)
+			payload_size=node_fpath["payload_size"]
+
+			offset=offset+payload_size
+	
+			nodes.append(node_fpath)
+
+			continue
+
+		if data[offset:offset+4]==_CONST_END_OF_ENTIRE_DEVICE_PATH:
+
+			nodes.append({"node":-1})
+
+			break
+
+		break
+
+	return nodes
 
 ###############################################################################
 
@@ -483,7 +710,7 @@ def hl_get_efi_BootEntry(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry:str,
 		assertion:bool=True,
-		debug:bool=True,
+		debug:bool=False,
 	)->dict:
 
 	# Gets the contents of a specific boot entry
@@ -504,78 +731,93 @@ def hl_get_efi_BootEntry(
 	if debug:
 		print("RAW DATA:",data_bytes)
 
-	std_headersize=6
-	std_encoding="utf-16-le"
-	std_nullterm=b"\x00\x00"
+	# Parsing according to the EFI_LOAD_OPTION specification
 
-	data_size=len(data_bytes)
+	offset=0
 
-	if data_size<std_headersize:
-		msg_err="The data is smaller than the stantarized header"
-		if not assertion:
-			return {"error":msg_err}
+	# Field 1
+	# Attributes
+	# UINT32
+	# Offset 0x00
+	# Size 4
 
-		raise Exception(msg_err)
+	readmax=4
+	data_attributes=data_bytes[offset:offset+readmax]
+	if debug:
+		print(
+			"ATTRIBUTES:",
+			data_attributes
+		)
+		print(
+			"ATTRIBUTES (DECODED):",
+			int.from_bytes(
+				data_attributes,
+				byteorder="little"
+			)
+		)
 
-	data_attrs,data_fpath_len=struct.unpack_from(
-		"<IH",data_bytes,0
+	offset=offset+readmax
+
+	# Field 2
+	# FilePathListLength
+	# UINT16
+	# Offset 0x04
+	# Size 2
+
+	readmax=2
+	data_fpathlen=data_bytes[offset:offset+readmax]
+	data_fpathlen_ok=int.from_bytes(
+		data_fpathlen,
+		byteorder="little"
+	)
+	if debug:
+		print("FILEPATH LENGTH:",data_fpathlen)
+		print("FILEPATH LENGTH (OK):",data_fpathlen_ok)
+
+	offset=offset+readmax
+
+	# Field 3
+	# Description
+	# UTF-16 string, Null term.
+	# Offset 0x06
+	# Size any
+
+	readmax=data_bytes[offset:].find(_CONST_NULLTERM)
+	if readmax==-1:
+		return {}
+
+	if not readmax%2==0:
+		readmax=readmax+1
+
+	data_description=data_bytes[offset:offset+readmax]
+	data_description_ok=data_description.decode("utf-16-le")
+
+	if debug:
+		print("DESCRIPTION:",data_description)
+		print("DESCRIPTION (OK):",data_description_ok)
+
+	offset=offset+readmax+len(_CONST_NULLTERM)
+
+	# Field 4
+	# FilePathList
+	# Complicated shit
+	# Offset depends on where does Desccription ends
+	# Size is given by FilePathListLength
+
+	data_fpathlist=data_bytes[offset:offset+data_fpathlen_ok]
+
+	data_fpathlist_ok=parse_efi_filepathlist_type_0x04(
+		data_fpathlist,
+		debug=debug
 	)
 
-	# DESCRIPTION
+	offset=offset+data_fpathlen_ok
 
-	desc_start=std_headersize
-	desc_end=data_bytes.find(std_nullterm,desc_start)
-	if desc_end==-1:
-		msg_err="The description is not NULL-terminated"
-		if not assertion:
-			return {"error":msg_err}
-
-		raise Exception(msg_err)
-
-
-	desc_bytes=data_bytes[desc_start:desc_end+1]
-
-	if debug:
-		print("DESCRIPTION AS BYTES",desc_bytes)
-
-	desc=desc_bytes.decode(std_encoding,errors="replace")
-
-	if debug:
-		print("\tDESCRIPTION",desc)
-
-	# DETECTING FILEPATH LIST
-
-	fpath_start=desc_end+len(std_nullterm)
-
-	# Check wether it's off by one byte
-	if data_bytes[fpath_start:fpath_start+2]==b"\x00\x04":
-		print("IT'S OFF")
-		fpath_start=fpath_start+1
-
-	fpath_end=fpath_start+data_fpath_len
-	if fpath_end>data_size:
-
-		msg_err="Filepath list is out of bounds"
-		if not assertion:
-			return {"error":msg_err}
-
-		raise Exception(msg_err)
-
-	fpath_lst=data_bytes[fpath_start:fpath_end]
-
-	try:
-
-		# NOTE:
-		# I am only interested in 04 04 types, which are the EFI files
-		# I'm not interested in hardware devices
-
-		return parse_efi_filepath_list_0x04_0x04(fpath_lst)
-
-	except Exception as exc:
-
-		print(exc)
-
-		return {}
+	return {
+		"raw_attributes":data_attributes,
+		"description":data_description_ok,
+		"filepath_list":data_fpathlist_ok,
+	}
 
 ###############################################################################
 
@@ -599,21 +841,56 @@ if __name__=="__main__":
 	GetFwEnVarW=import_GetFwEnVarW()
 	SetFwEnvVarExW=import_SetFwEnvVarExW()
 
+	# List Boot order
+
 	boot_order=hl_get_efi_BootOrder(GetFwEnVarW)
 	print("Boot order:",boot_order)
 
-	# done=hl_set_efi_BootNext(SetFwEnvVarExW,boot_order[0])
+	result=hl_get_efi_BootEntry(
+		GetFwEnVarW,
+		boot_order[0],
+		debug=True
+	)
+	print("DETAILS:",result)
+
+	sys_exit(0)
+
+	# boot_entry_with_grub:Optional[str]=None
+
+	# # List boot entries
+
+	# print("BOOT ENTRIES:")
+	# for boot_entry in boot_order:
+
+	# 	print("\nBOOT ENTRY:",boot_entry)
+	# 	result=hl_get_efi_BootEntry(
+	# 		GetFwEnVarW,
+	# 		boot_entry,
+	# 		debug=True
+	# 	)
+	# 	print("DETAILS:",result)
+
+	# 	# Grab a specific boot entry
+
+	# 	if not isinstance(result,list):
+	# 		continue
+
+	# 	if not len(result)==1:
+	# 		continue
+
+	# 	x=result[0].get("path")
+	# 	if not isinstance(x,str):
+	# 		continue
+
+	# 	if ("grub2" in x) and ("efi" in x):
+	# 		print("FOUND GRUB2 EFI in:",boot_entry)
+	# 		boot_entry_with_grub=boot_entry
+	# 		break
+
+
+	# done=hl_set_efi_BootNext(SetFwEnvVarExW,boot_entry_with_grub)
 	# print("BootNext set?",done)
 
-	# boot_next=hl_get_efi_BootNext(GetFwEnVarW)
-	# print("Next system to boot:",boot_next)
+	# # boot_next=hl_get_efi_BootNext(GetFwEnVarW)
+	# # print("Next system to boot:",boot_next)
 
-	print("BOOT ENTRIES:")
-	for boot_entry in boot_order:
-
-		print(boot_entry)
-		result=hl_get_efi_BootEntry(
-			GetFwEnVarW,
-			boot_entry
-		)
-		print("DETAILS:",result)
