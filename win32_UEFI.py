@@ -216,7 +216,8 @@ def get_fwtype(
 
 def read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		varname:str,efiguid:str=_EFI_GLOBALVAR,
+		varname:str,
+		efiguid:str=_EFI_GLOBALVAR,
 		assertion:bool=True
 	)->Optional[bytes]:
 
@@ -1005,7 +1006,8 @@ def get_evar_BootNNNN(
 
 	data_bytes=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
-		boot_entry,assertion=assertion
+		boot_entry,
+		assertion=assertion
 	)
 	if data_bytes is None:
 		return {}
@@ -1246,6 +1248,53 @@ if __name__=="__main__":
 	# Some tests
 
 	from sys import exit as sys_exit
+	from sys import argv as sys_argv
+	from sys import platform as sys_platform
+
+	arg_main=sys_argv[1].strip().lower()
+
+	_BOOT_ORDER_ADD_FIRST="BootOrder.add_first"
+	_BOOT_ORDER_ADD_LAST="BootOrder.add_last"
+	_BOOT_ORDER_REMOVE="BootOrder.remove"
+
+	if arg_main=="help":
+
+		from pathlib import Path
+
+		epoint=sys_argv[0]
+		is_exe=epoint.endswith(".exe")
+
+		if is_exe:
+			epoint=f"> {epoint}"
+		if not is_exe:
+			epoint=f"> python {epoint}"
+
+		print(
+			f"\nGet boot entries, BootOrder, BootNext, and BootOrder):\n{epoint}",
+			"get|read","$EFI_VARIABLE"
+		)
+
+		print(
+			f"\nSet BootNext variable:\n{epoint}",
+			"set|write","BootNext","$BootNNNN"
+		)
+
+		print(
+			f"\nAppend a boot entry at the end of the boot order:\n{epoint}",
+			"set|write",_BOOT_ORDER_ADD_LAST,"$BootNNNN"
+		)
+
+		print(
+			f"\nAdd the boot entry to the fist place of the boot order:\n{epoint}",
+			"set|write",_BOOT_ORDER_ADD_FIRST,"$BootNNNN"
+		)
+
+		print(
+			f"\nRemove a boot entry from the boot order:\n{epoint}",
+			"set|write",_BOOT_ORDER_REMOVE,"$BootNNNN"
+		)
+
+		sys_exit(0)
 
 	# NOTE:
 	# If you get a 1314 error is because you need to run this module as
@@ -1259,43 +1308,113 @@ if __name__=="__main__":
 
 	GetFwType=import_GetFwType()
 
-	firmware_type=get_fwtype(GetFwType)
-	if not firmware_type==2:
-		print("Not running in a UEFI booted system")
+	if not is_fwtype_uefi(GetFwType):
+		print("CANNNOT UNDER A NON UEFI/EFI BOOTED SYSTEM")
 		sys_exit(0)
 
 	GetFwEnVarW=import_GetFwEnVarW()
 
-	SetFwEnvVarExW=import_SetFwEnvVarExW()
+	if arg_main in ("get","read"):
 
-	# Get current system
+		evar=sys_argv[2].strip()
 
-	boot_current=get_evar_BootCurrent(GetFwEnVarW)
-	print("\nBootCurrent",boot_current)
-
-	# Get BootNext
-	boot_next=get_evar_BootNext(GetFwEnVarW)
-	print("\nBootNext",boot_next)
-
-	# List Boot order
-
-	boot_order=get_evar_BootOrder(GetFwEnVarW)
-	print("\nBoot order:",boot_order)
-
-	# List boot entries
-
-	print("\nBOOT ENTRIES:")
-
-	more_verbose=False
-
-	for boot_entry in boot_order:
-
-		print("\nBOOT ENTRY:",boot_entry)
-		print(
-			get_evar_BootNNNN(
-				GetFwEnVarW,
-				boot_entry,
-				assertion=False,
-				debug=more_verbose
+		if evar=="BootCurrent":
+			print(
+				"BootCurrent:",
+				get_evar_BootCurrent(GetFwEnVarW)
 			)
-		)
+			sys_exit(0)
+
+		if evar=="BootNext":
+			print(
+				"BootNext:",
+				get_evar_BootNext(GetFwEnVarW)
+			)
+			sys_exit(0)
+
+		if evar=="BootOrder":
+			print(
+				"BootOrder:",
+				get_evar_BootOrder(GetFwEnVarW,as_list=True)
+			)
+			sys_exit(0)
+
+		if evar.startswith("Boot"):
+			print(
+				f"{evar}:",
+				get_evar_BootNNNN(GetFwEnVarW,evar)
+			)
+
+		sys_exit(0)
+
+	if arg_main in ("set","write"):
+
+		SetFwEnvVarExW=import_SetFwEnvVarExW()
+
+		arg_action=sys_argv[2].strip()
+
+		if arg_action=="BootNext":
+
+			evar=sys_argv[3].strip()
+
+			if set_evar_BootNext(SetFwEnvVarExW,evar):
+				print(f"new BootNext: {evar}")
+				sys_exit(0)
+
+			print("FAILED")
+			sys_exit(1)
+
+
+		if arg_action in (
+				_BOOT_ORDER_ADD_FIRST,
+				_BOOT_ORDER_ADD_LAST,
+				_BOOT_ORDER_REMOVE
+			):
+
+			evar=sys_argv[3].strip()
+
+			boot_order=get_evar_BootOrder(GetFwEnVarW,as_list=True)
+
+			if arg_action==_BOOT_ORDER_REMOVE:
+
+				if evar in boot_order:
+
+					boot_order.remove(evar)
+
+					if set_evar_BootOrder(SetFwEnvVarExW,boot_order):
+						print("NEW BootOrder:",boot_order)
+						sys_exit(0)
+
+					print("FAILED")
+					sys_exit(1)
+
+			if arg_action==_BOOT_ORDER_ADD_LAST:
+
+				if evar in boot_order:
+					boot_order.remove(evar)
+
+				boot_order.append(evar)
+
+				if set_evar_BootOrder(SetFwEnvVarExW,boot_order,debut=True):
+					print("NEW BootOrder:",boot_order)
+					sys_exit(0)
+
+				print("FAILED")
+				sys_exit(1)
+
+			if arg_action==_BOOT_ORDER_ADD_FIRST:
+	
+				if evar in boot_order:
+					boot_order.remove(evar)
+					print("AFTER REMOVAL",boot_order)
+
+				boot_order_new=[evar]
+
+				boot_order_new.extend(boot_order)
+	
+				if set_evar_BootOrder(SetFwEnvVarExW,boot_order_new):
+					print("NEW BootOrder:",boot_order_new)
+					sys_exit(0)
+
+				print("FAILED")
+				sys_exit(1)
