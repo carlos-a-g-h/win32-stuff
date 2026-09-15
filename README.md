@@ -10,9 +10,11 @@ A python module that lets you modify the EFI/UEFI firmware boot options. It work
 
 Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/win32_UEFI.py)
 
-Example/tests script about boot entries [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_BootEntry.py) 
+Example/tests script about boot entries [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_boot_entry.py)
 
-Example/tests script about boot order [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_BootOrder.py)
+Example/tests script about boot order [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_boot_order.py)
+
+Example/tests script that creates a new boot entry [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_UNSAFE.py)
 
 What works on a lower level?
 

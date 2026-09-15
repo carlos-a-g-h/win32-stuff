@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+# DONE
+
 from win32_UEFI import (
 
 	env_gain_aditional_privileges,

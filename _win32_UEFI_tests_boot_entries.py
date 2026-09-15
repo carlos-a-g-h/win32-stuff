@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+# DONE
+
 from typing import Optional
 
 from win32_UEFI import (
