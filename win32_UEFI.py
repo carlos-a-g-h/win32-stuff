@@ -126,45 +126,6 @@ def import_SetFwEnvVarExW()->Callable:
 
 ###############################################################################
 
-# Lower level functions
- 
-def init_gain_aditional_privileges(assertion:bool=True)->bool:
-
-	# Gain aditional privileges that are necessary to work with stuff that
-	# Windows might be consider very sensitive, such as, interacting with
-	# EFI/UEFI firmware variables for example
-
-	token=win32security.OpenProcessToken(
-		win32api.GetCurrentProcess(),
-		win32con.TOKEN_QUERY | win32con.TOKEN_ADJUST_PRIVILEGES
-	)
-
-	priv_id=win32security.LookupPrivilegeValue(
-		None,"SeSystemENvironmentPrivilege"
-	)
-
-	win32security.AdjustTokenPrivileges(
-		token,False,[(
-			priv_id,
-			win32con.SE_PRIVILEGE_ENABLED
-		)]
-	)
-	err_code=win32api.GetLastError()
-	if not err_code==0:
-		err_msg=(
-			"Unable to set the custom privilege;"
-			f" error: {err_code}"
-		)
-		if not assertion:
-			print(err_msg)
-			return False
-
-		raise Exception(err_msg)
-
-	return True
-
-###############################################################################
-
 # Utilities, simple functions, and lower level fw access functions
 
 def gen_str_BootNNNN(
@@ -204,6 +165,33 @@ def gen_str_BootNNNN(
 
 	return new
  
+def env_gain_aditional_privileges():
+
+	# Gain aditional privileges that are necessary to work with stuff that
+	# Windows might be consider very sensitive, such as, interacting with
+	# EFI/UEFI firmware variables for example
+
+	token=win32security.OpenProcessToken(
+		win32api.GetCurrentProcess(),
+		win32con.TOKEN_QUERY | win32con.TOKEN_ADJUST_PRIVILEGES
+	)
+
+	priv_id=win32security.LookupPrivilegeValue(
+		None,"SeSystemEnvironmentPrivilege"
+	)
+
+	win32security.AdjustTokenPrivileges(
+		token,False,[(
+			priv_id,
+			win32con.SE_PRIVILEGE_ENABLED
+		)]
+	)
+	err_code=win32api.GetLastError()
+	if not err_code==0:
+		raise WinError(err_code)
+
+	print("THIS PROCESS HAS GAINED ADITIONAL PRIVILEGES")
+
 def get_fwtype(
 		fun_GetFirmwareType:Callable,
 		assertion:bool=True
@@ -217,21 +205,16 @@ def get_fwtype(
 		):
 
 		err=get_last_error()
-		err_msg=(
-			"Failed to determine firmware type;"
-			f" error: {err}"
-		)
+		err_msg="Failed to determine the type of firmware"
 		if assertion:
 			raise WinError(err)
 
 		print(err_msg)
 		return None
 
-	res_ok=res_dword.value
-	# print("fwtype:",res_ok)
-	return res_ok
+	return res_dword.value
 
-def get_efi_variable(
+def read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		varname:str,efiguid:str=_EFI_GLOBALVAR,
 		assertion:bool=True
@@ -265,16 +248,10 @@ def get_efi_variable(
 			continue
 
 		if err==203:
-			print(
-				"UEFI var not found:",
-				varname
-			)
+			err_msg=f"UEFI var not found: {varname}"
 			break
 
-		err_msg=(
-			"Failed to find EFI variable;"
-			f" error: {err}; varname: {varname}"
-		)
+		err_msg=f"Failed to find EFI variable: {varname}"
 		break
 
 	if err_msg is not None:
@@ -287,7 +264,7 @@ def get_efi_variable(
 
 	return data
 
-def set_efi_variable(
+def write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
 		varname:str,
 		varvalue:Optional[bytes],
@@ -356,7 +333,7 @@ def parse_efi_BootOrder(
 
 	return tuple(boot_order)
 
-def parse_efi_filepathlist_node_header(
+def parse_efi_filepathlist_node_head(
 		data:bytes,
 		data_offset:int=0,
 		debug:bool=False
@@ -426,16 +403,6 @@ def parse_efi_filepathlist_node_harddrive(
 	# Bytes 04           Bytes 01            Bytes 2A 00
 
 	if unsafe:
-
-		# x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_header(
-		# 	data,data_offset=data_offset,
-		# 	debug=debug
-		# )
-		# if not (
-		# 	x_type==4 and
-		# 	x_subtype==1 and
-		# 	x_nodesize==42
-		# ):
 
 		if not data[data_offset:data_offset+4]==_EFI_NODE_HARD_DRIVE:
 
@@ -533,7 +500,7 @@ def parse_efi_filepathlist_node_harddrive(
 	return {
 		"node":_EFI_NODE_HARD_DRIVE,
 		"partition_number":d_partnum_ok,
-		"partition_startlba:":d_partstartlba_ok,
+		"partition_startlba":d_partstartlba_ok,
 		"partition_size":d_partsize_ok,
 		"partition_guid":d_partguid_ok,
 		"mbrtype":d_mbrtype_ok,
@@ -563,7 +530,7 @@ def parse_efi_filepathlist_node_filepath(
 
 	x_nodesize=-1
 	if not unsafe:
-		x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_header(
+		x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_head(
 			data,data_offset=data_offset,
 			debug=debug
 		)
@@ -678,7 +645,7 @@ def parse_efi_filepathlist_t0x04(
 
 			break
 
-		nodes.append({"nodes":data[offset:]})
+		nodes.append({"raw":data[offset:]})
 
 		break
 
@@ -843,7 +810,7 @@ def build_efi_filepathlist_node_filepath(filepath:str)->bytes:
 
 # Hi level functions
 
-def hl_is_fwtype_uefi(
+def is_fwtype_uefi(
 		fun_GetFirmwareType:Callable,
 		assertion:bool=True
 	)->bool:
@@ -861,7 +828,7 @@ def hl_is_fwtype_uefi(
 
 	return (result==2)
 
-def hl_is_fwtype_legacy(
+def is_fwtype_legacy(
 		fun_GetFirmwareType:Callable,
 		assertion:bool=True
 	)->bool:
@@ -879,44 +846,14 @@ def hl_is_fwtype_legacy(
 
 	return (result==1)
 
-def hl_get_efi_BootOrder(
-		fun_GetFirmwareEnvironmentVariableW:Callable,
-		as_list:bool=False,assertion:bool=True
-	)->Optional[Union[tuple,list]]:
-
-	# Get the value inside the "BootOrder" EFI Variable
-
-	data:Optional[bytes]=get_efi_variable(
-		fun_GetFirmwareEnvironmentVariableW,
-		"BootOrder",
-		assertion=assertion
-	)
-	if data is None:
-		return None
-
-	boot_order=parse_efi_BootOrder(data,as_list=as_list)
-
-	return boot_order
-
-def hl_set_efi_BootOrder(
-		fun_SetFirmwareEnvironmentVariableExW:Callable,
-		boot_order:Union[tuple,list],
-		assertion:bool=False,
-		debug:bool=False
-	):
-	
-	# WORK IN PROGRESS
-
-	pass
-
-def hl_get_efi_BootCurrent(
+def get_evar_BootCurrent(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		assertion:bool=True
 	)->Optional[str]:
 
 	# Get the value inside the "BootCUrrent" EFI variable
 
-	data:Optional[bytes]=get_efi_variable(
+	data:Optional[bytes]=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootCurrent",
 		assertion=assertion
@@ -941,20 +878,19 @@ def hl_get_efi_BootCurrent(
 	data_unpkg=struct.unpack(
 		"<H",data
 	)
-	print(data_unpkg)
 
 	boot_entry=data_unpkg[0]
 
 	return f"Boot{boot_entry:04X}"
 
-def hl_get_efi_BootNext(
+def get_evar_BootNext(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		assertion:bool=True
+		assertion:bool=False
 	)->Optional[str]:
 
 	# Get the value inside the "BootNext" EFI variable
 
-	data:Optional[bytes]=get_efi_variable(
+	data:Optional[bytes]=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootNext",
 		assertion=assertion
@@ -985,7 +921,7 @@ def hl_get_efi_BootNext(
 
 	return f"Boot{boot_entry:04X}"
 
-def hl_set_efi_BootNext(
+def set_evar_BootNext(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
 		boot_entry:str,
 		assertion:bool=True,
@@ -1005,7 +941,7 @@ def hl_set_efi_BootNext(
 		"<H",boot_num
 	)
 
-	done=set_efi_variable(
+	done=write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW,
 		"BootNext",boot_next_val,
 		assertion=assertion
@@ -1013,7 +949,46 @@ def hl_set_efi_BootNext(
 
 	return done
 
-def hl_get_efi_BootEntry(
+def get_evar_BootOrder(
+		fun_GetFirmwareEnvironmentVariableW:Callable,
+		as_list:bool=False,assertion:bool=True
+	)->Optional[Union[tuple,list]]:
+
+	# Get the value inside the "BootOrder" EFI Variable
+
+	data:Optional[bytes]=read_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW,
+		"BootOrder",
+		assertion=assertion
+	)
+	if data is None:
+		return None
+
+	boot_order=parse_efi_BootOrder(data,as_list=as_list)
+
+	return boot_order
+
+def set_evar_BootOrder(
+		fun_SetFirmwareEnvironmentVariableExW:Callable,
+		boot_order:Union[tuple,list],
+		assertion:bool=True,
+		debug:bool=False
+	)->Union[bytes,bool]:
+
+	data_bytes=build_efi_BootOrder(boot_order)
+
+	if debug:
+		return data_bytes
+
+	ok=write_efi_variable(
+		fun_SetFirmwareEnvironmentVariableExW,
+		"BootOrder",data_bytes,
+		assertion=assertion
+	)
+
+	return ok
+
+def get_evar_BootNNNN(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry:str,
 		assertion:bool=True,
@@ -1028,7 +1003,7 @@ def hl_get_efi_BootEntry(
 	if not boot_entry.startswith("Boot"):
 		return {}
 
-	data_bytes=get_efi_variable(
+	data_bytes=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry,assertion=assertion
 	)
@@ -1149,7 +1124,7 @@ def hl_get_efi_BootEntry(
 
 	return data_ok
 
-def hl_set_efi_BootEntry(
+def set_evar_BootNNNN(
 		fun_SetFirmwareEnvironmentVariableExW:Optional[Callable],
 
 		# Boot####
@@ -1255,7 +1230,7 @@ def hl_set_efi_BootEntry(
 	if not isinstance(fun_SetFirmwareEnvironmentVariableExW,Callable):
 		return payload
 
-	ok=set_efi_variable(
+	ok=write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW,
 		boot_entry,payload,assertion=assertion
 	)
@@ -1280,7 +1255,7 @@ if __name__=="__main__":
 	# is authorized to do modifications on parts of the system that require
 	# privileges beyond what the regular Administrator user already has
 
-	init_gain_aditional_privileges()
+	env_gain_aditional_privileges()
 
 	GetFwType=import_GetFwType()
 
@@ -1290,20 +1265,21 @@ if __name__=="__main__":
 		sys_exit(0)
 
 	GetFwEnVarW=import_GetFwEnVarW()
+
 	SetFwEnvVarExW=import_SetFwEnvVarExW()
 
 	# Get current system
 
-	boot_current=hl_get_efi_BootCurrent(GetFwEnVarW)
+	boot_current=get_evar_BootCurrent(GetFwEnVarW)
 	print("\nBootCurrent",boot_current)
 
 	# Get BootNext
-	boot_next=hl_get_efi_BootNext(GetFwEnVarW)
+	boot_next=get_evar_BootNext(GetFwEnVarW)
 	print("\nBootNext",boot_next)
 
 	# List Boot order
 
-	boot_order=hl_get_efi_BootOrder(GetFwEnVarW)
+	boot_order=get_evar_BootOrder(GetFwEnVarW)
 	print("\nBoot order:",boot_order)
 
 	# List boot entries
@@ -1315,14 +1291,11 @@ if __name__=="__main__":
 	for boot_entry in boot_order:
 
 		print("\nBOOT ENTRY:",boot_entry)
-		result=hl_get_efi_BootEntry(
-			GetFwEnVarW,
-			boot_entry,
-			debug=more_verbose
+		print(
+			get_evar_BootNNNN(
+				GetFwEnVarW,
+				boot_entry,
+				assertion=False,
+				debug=more_verbose
+			)
 		)
-		print("DETAILS:",result)
-
-
-	# Set BootNext!
-	ok=hl_set_efi_BootNext(SetFwEnvVarExW,"BootFFFF")
-	print("OK?",ok)

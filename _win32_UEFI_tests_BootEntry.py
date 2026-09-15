@@ -1,8 +1,15 @@
 #!/usr/bin/python3
 
+from typing import Optional
+
 from win32_UEFI import (
 
+	_EFI_NODE_HARD_DRIVE,
 	_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH,
+
+	env_gain_aditional_privileges,
+
+	import_GetFwEnVarW,
 
 	build_efi_filepathlist_node_harddrive,
 	parse_efi_filepathlist_node_harddrive,
@@ -12,71 +19,104 @@ from win32_UEFI import (
 
 	parse_efi_filepathlist_t0x04,
 
-	init_gain_aditional_privileges,
-	import_SetFwEnvVarExW,
-	hl_set_efi_BootEntry,
-	hl_set_efi_BootNext,
+	get_evar_BootCurrent,
+	get_evar_BootNNNN
 )
 
-# test 1
-# Hard Drive node
+# Gain elevated privileges
 
-part_num=1
-part_startlba=2048
-part_size=204800
-part_guid='18adb7fa-6cd4-4440-b3f6-5bcf2fe56256'
+env_gain_aditional_privileges()
 
-enc_hdd_node=build_efi_filepathlist_node_harddrive(part_num,part_startlba,part_size,part_guid)
+# Import the necessary function (for read access only)
 
-print("\nenc_hdd_node:",enc_hdd_node)
+GetFwEnVarW=import_GetFwEnVarW()
 
-parsed_hdd_node=parse_efi_filepathlist_node_harddrive(enc_hdd_node)
+# Get the boot entry that corresponds to the current running system
 
-print("\nparsed_hdd_node:",parsed_hdd_node)
+boot_entry_curr=get_evar_BootCurrent(GetFwEnVarW)
 
-# test 2
-# Filepath node
+print("\nYour system is",boot_entry_curr)
 
-filepath="\\EFI\\Boot\\grub2.bootx64.efi"
+# Get the full contents of the selected boot entry
 
-enc_fpath_node=build_efi_filepathlist_node_filepath(filepath)
+boot_entry_details=get_evar_BootNNNN(GetFwEnVarW,boot_entry_curr)
 
-print("\nenc_fpath_node:",enc_fpath_node)
-
-parsed_fpath_node=parse_efi_filepathlist_node_filepath(enc_fpath_node,debug=True)
-
-print("\nparsed_fpath_node:",parsed_fpath_node)
-
-# test 3
-# FilePathList using Hard Drive node + Filepath node + End of Device path
-
-nodes=parse_efi_filepathlist_t0x04(
-	enc_hdd_node+enc_fpath_node+_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH,
-	debug=True
-)
-print("\nNodes:",nodes)
-
-# Test 4 is highly dangerous and it should not be reached unless you know what you're doing
-exit(0)
-
-# Test 4
-# Uses the previously made nodes to make a real boot entry
-
-init_gain_aditional_privileges()
-SetFwEnvVarExW=import_SetFwEnvVarExW()
-
-ok=hl_set_efi_BootEntry(
-	SetFwEnvVarExW,"BootFFFF",
-	"[NEW] Grub2 EFI",
-	[
-		enc_hdd_node,
-		enc_fpath_node
-	],
-	assertion=True
+print(
+	"\nDetails of",
+	boot_entry_curr,
+	boot_entry_details
 )
 
-print("OK?",ok)
+# Get hard drive node from the filepathlist and grab all the necessary data
 
-# Set BootNext!
-ok=hl_set_efi_BootNext(SetFwEnvVarExW,"BootFFFF")
-print("OK?",ok)
+partition_number=0
+partition_startlba=-1
+partition_size=-1
+partition_guid:Optional[str]=None
+
+for node in boot_entry_details["filepath_list"]:
+
+	if not node.get("node")==_EFI_NODE_HARD_DRIVE:
+		continue
+
+	print("\nSelected node:",node)
+
+	partition_number=node.get("partition_number")
+	partition_startlba=node.get("partition_startlba")
+	partition_size=node.get("partition_size")
+	partition_guid=node.get("partition_guid")
+
+print("partition_number",partition_number)
+print("partition_startlba",partition_startlba)
+print("partition_size",partition_size)
+print("partition_guid",partition_guid)
+
+# Create a HardDrive node
+
+new_node_hdd=build_efi_filepathlist_node_harddrive(
+	partition_number,partition_startlba,
+	partition_size,partition_guid
+)
+print(
+	"\nNew hard drive node:",
+	new_node_hdd
+)
+
+# Deserialize the new hard drive node
+
+print(
+	"\nThe new hard drive node, but deserialized:",
+	parse_efi_filepathlist_node_harddrive(
+		new_node_hdd
+	)
+)
+
+# Create a new filepath node
+
+filepath_str="\\EFI\\Boot\\SomeRandomBootLoader.EFI"
+
+new_filepath_node=build_efi_filepathlist_node_filepath(filepath_str)
+
+print("\nNew filepath node:",new_filepath_node)
+
+# deserialize the new filepath node
+
+print(
+	"\nThe new filepath node, but deseralized:",
+	parse_efi_filepathlist_node_filepath(
+		new_filepath_node
+	)
+)
+
+# Combine the new hard drive node and the new filepath node to create a new
+
+filepathlist=new_node_hdd+new_filepath_node+_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH
+
+print("New filepathlist:",filepathlist)
+
+# deserialize the new filepathlist
+
+print(
+	"\nThe new filepathlist (deserialized):",
+	parse_efi_filepathlist_t0x04(filepathlist)
+)
