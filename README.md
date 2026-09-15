@@ -6,6 +6,10 @@ This repo is a collection of modules and scripts for dealing with Windows stuff,
 
 Source file [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/win32_UEFI.py)
 
+Test file 1 [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_BootEntry.py)
+
+Test file 2 [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_BootOrder.py)
+
 A python module that lets you modify the EFI/UEFI firmware boot options. It works using ctypes
 
 What works on a lower level?
@@ -18,8 +22,8 @@ What works on a higher level or for specific EFI/UEFI variables and functionalit
 - You can read the "BootCurrent" EFI variable
 - You can read and write the "BootNext" EFI variable
 - You can list all the firmware boot entries ("BootOrder" variable)
-- You can read Boot entres ("Boot####" variables). At the moment I am focusing on type 4 subtype 4
+- You can read and write Boot entries ("Boot####" variables)
 
 What is still not finished?
 
-- Creating custom boot entries for custom EFI applications and bootloaders
+- BootOrder modification
