@@ -35,9 +35,9 @@ from win32_UEFI import (
 
 # Boot entry name and EFI filepath
 
-const_name="BootFFFF"
+const_name="BootF000"
 
-const_description="Grub2 EFI (filename is grub2.bootx64.efi)"
+const_description="Grub2 EFI (BootF000)"
 
 const_filepath="\\EFI\\Boot\\grub2.bootx64.efi"
 
@@ -102,13 +102,21 @@ assert UUID(part_guid)
 # Create a new filepathlist
 
 node_filepath=build_efi_filepathlist_node_filepath(
-	const_filepath
+	const_filepath,
+	verify_build=True
 )
+if node_filepath is None:
+	print("\nINVALID FILEPATH NODE")
+	exit(1)
 
 node_harddive=build_efi_filepathlist_node_harddrive(
 	part_numb,part_slba,
-	part_size,part_guid
+	part_size,part_guid,
+	verify_build=True
 )
+if node_harddive is None:
+	print("\nINVALID HARD DRIVE NODE")
+	exit(1)
 
 if not set_evar_BootNNNN(
 	SetFwEnvVarExW,
@@ -117,7 +125,7 @@ if not set_evar_BootNNNN(
 	nodes=[node_harddive,node_filepath]
 ):
 	print("\nFAILED TO CREATE BOOT ENTRY")
-	exit(0)
+	exit(1)
 
 # Place the new boot entry as the first option
 
@@ -131,12 +139,12 @@ print("\nNew boot order:",boot_order_new)
 
 if not set_evar_BootOrder(SetFwEnvVarExW,boot_order_new):
 	print("\nFAILED TO SET NEW BOOT ORDER")
-	exit(0)
+	exit(1)
 
 # Set the new boot order as the next system to boot
 
 if not set_evar_BootNext(SetFwEnvVarExW,const_name):
 	print("\nFAILED TO SET BOOTNEXT VAR")
-	exit(0)
+	exit(1)
 
 print("DONE! Reboot the PC")

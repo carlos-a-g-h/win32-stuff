@@ -27,10 +27,19 @@ _Win32_SetFwEnvVarExW="SetFirmwareEnvironmentVariableExW"
 
 # Misc
 
-_KERNEL32="kernel32"
 _ENC_UTF16LE="utf-16-le"
-_UINT16_MAX=65535
+_KERNEL32="kernel32"
 _NULLTERM=b"\x00\x00"
+
+_UINT64_MAX=18_446_744_073_709_551_615
+_UINT32_MAX=4_294_967_296
+_UINT16_MAX=65_536
+_UINT8_MAX=256
+
+_ERR_UINT64="Larger than UINT64"
+_ERR_UINT32="Larger than UINT32"
+_ERR_UINT16="Larger than UINT16"
+_ERR_UINT8="Larger than UINT8"
 
 # EFI stuff
 
@@ -128,6 +137,34 @@ def import_SetFwEnvVarExW()->Callable:
 
 # Utilities, simple functions, and lower level fw access functions
 
+def is_uint8(data:int)->bool:
+	if not data>0:
+		return False
+	if not data<_UINT8_MAX:
+		return False
+	return True
+
+def is_uint16(data:int)->bool:
+	if not data>0:
+		return False
+	if not data<_UINT16_MAX:
+		return False
+	return True
+
+def is_uint32(data:int)->bool:
+	if not data>0:
+		return False
+	if not data<_UINT32_MAX:
+		return False
+	return True
+
+def is_uint64(data:int)->bool:
+	if not data>0:
+		return False
+	if not data<_UINT64_MAX:
+		return False
+	return True
+
 def gen_str_BootNNNN(
 		already_exist:Union[tuple,list]=[],
 		debug:bool=False
@@ -137,7 +174,7 @@ def gen_str_BootNNNN(
 
 	# Very useful for creating a new name for a boot entry
 	# You can feed this function a list or a tuple of names to
-	# avoid collision
+	# avoid a collision
 
 	qtty=len(already_exist)
 	if qtty==_UINT16_MAX:
@@ -150,7 +187,7 @@ def gen_str_BootNNNN(
 
 	while True:
 
-		new="Boot"+hex(randint(0,_UINT16_MAX))[2:]
+		new="Boot"+hex(randint(0,_UINT16_MAX-1))[2:]
 		if not must_check:
 			break
 
@@ -186,9 +223,9 @@ def env_gain_aditional_privileges():
 			win32con.SE_PRIVILEGE_ENABLED
 		)]
 	)
-	err_code=win32api.GetLastError()
-	if not err_code==0:
-		raise WinError(err_code)
+	err=win32api.GetLastError()
+	if not err==0:
+		raise WinError(err)
 
 	print("THIS PROCESS HAS GAINED ADITIONAL PRIVILEGES")
 
@@ -207,7 +244,7 @@ def get_fwtype(
 		err=get_last_error()
 		err_msg="Failed to determine the type of firmware"
 		if assertion:
-			raise WinError(err)
+			raise WinError(err,err_msg)
 
 		print(err_msg)
 		return None
@@ -261,7 +298,7 @@ def read_efi_variable(
 			print(err_msg)
 			return None
 
-		raise WinError(err)
+		raise WinError(err,err_msg)
 
 	return data
 
@@ -305,7 +342,7 @@ def write_efi_variable(
 		)
 
 		if assertion:
-			raise WinError(err)
+			raise WinError(err,err_msg)
 
 		print(err_msg)
 
@@ -317,17 +354,40 @@ def write_efi_variable(
 
 def parse_efi_BootOrder(
 		data_enc:bytes,
-		as_list:bool=False
+		as_list:bool=False,
 	)->Union[tuple,list]:
 
-	data_dec=struct.unpack(
-		f"<{len(data_enc) // 2}H",
-		data_enc,
-	)
+	maxlen=len(data_enc)
+
+	if not maxlen%2==0:
+		if as_list:
+			return []
+		return None
+
+	progress=0
 
 	boot_order=[]
-	for x in data_dec:
-		boot_order.append(f"Boot{x:04X}")
+
+	while True:
+
+		if progress==maxlen:
+			break
+
+		p_int=int.from_bytes(
+			data_enc[progress:progress+2],
+			byteorder="little"
+		)
+		if not p_int<_UINT16_MAX:
+			break
+
+		boot_order.append(f"Boot{p_int:04X}")
+
+		progress=progress+2
+
+	if not progress==maxlen:
+		if as_list:
+			return []
+		return None
 
 	if as_list:
 		return boot_order
@@ -337,15 +397,16 @@ def parse_efi_BootOrder(
 def parse_efi_filepathlist_node_head(
 		data:bytes,
 		data_offset:int=0,
-		debug:bool=False
-	)->tuple:
+		debug:bool=False,
+		assertion:bool=False,
+	)->Optional[tuple]:
 
 	# Returns: ( Type , SubType, Node Size )
 
 	offset=data_offset
 
 	# TYPE      SUBTYPE   END OF HEADER
-	# UINT8     UINT8     UINT16 LE
+	# UINT8     UINT8     UINT16
 	# Offset 0  Offset 1  Offset 2
 	# Size 1    Size 1    Size 2
 
@@ -357,6 +418,13 @@ def parse_efi_filepathlist_node_head(
 		data[offset:offset+readmax],
 		byteorder="little"
 	)
+	if not is_uint8(x_type):
+		err_msg=(f"err in TYPE: {_ERR_UINT8}")
+		if assertion:
+			raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		return None
 
 	offset=offset+readmax
 
@@ -368,10 +436,17 @@ def parse_efi_filepathlist_node_head(
 		data[offset:offset+readmax],
 		byteorder="little"
 	)
+	if not is_uint8(x_subtype):
+		err_msg=f"err in SUBTYPE: {_ERR_UINT8}"
+		if assertion:
+			raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		return None
 
 	offset=offset+readmax
 
-	# Node size
+	# NodeSize
 
 	readmax=2
 
@@ -379,20 +454,36 @@ def parse_efi_filepathlist_node_head(
 		data[offset:offset+readmax],
 		byteorder="little"
 	)
+	if not is_uint16(x_nodesize):
+		err_msg=f"err in NODESIZE: {_ERR_UINT16}"
+		if assertion:
+			raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		return None
 
 	if debug:
-		print("type",x_type)
-		print("subtype",x_subtype)
-		print("node size",x_nodesize)
+		print(
+			"NODE HEADER\n"
+			f"  Type: {x_type}\n"
+			f"  SubType: {x_subtype}\n"
+			f"  NodeSize: {x_nodesize}"
+		)
 
-	return (x_type,x_subtype,x_nodesize)
+	return (
+		x_type,
+		x_subtype,
+		x_nodesize
+	)
 
 def parse_efi_filepathlist_node_harddrive(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		debug:bool=False
-	)->dict:
+		debug:bool=False,
+		assertion:bool=False,
+		verify_only:bool=False,
+	)->Union[bool,dict]:
 
 	# NOTE:
 
@@ -403,10 +494,34 @@ def parse_efi_filepathlist_node_harddrive(
 	# Size 1             Size 1              Size 2
 	# Bytes 04           Bytes 01            Bytes 2A 00
 
-	if unsafe:
+	if not unsafe:
+
+		if len(data[data_offset:])<42:
+
+			err_msg=(
+				"err in the data:"
+				" the given bytes are not enough to represent a hard drive node"
+			)
+			# if assertion:
+			# 	raise ValueError(err_msg)
+			if debug:
+				print(err_msg)
+			if verify_only:
+				return False
+			return {}
 
 		if not data[data_offset:data_offset+4]==_EFI_NODE_HARD_DRIVE:
 
+			err_msg=(
+				"err in the header:"
+				" The header does not match with the hard drive node header"
+			)
+			# if assertion:
+			# 	raise ValueError(err_msg)
+			if debug:
+				print(err_msg)
+			if verify_only:
+				return False
 			return {}
 
 	offset=data_offset+4
@@ -418,11 +533,19 @@ def parse_efi_filepathlist_node_harddrive(
 
 	readmax=4
 
-	d_partnum=data[offset:offset+readmax]
-	d_partnum_ok=int.from_bytes(d_partnum,"little")
-	if debug:
-		print("PARTNUM:",d_partnum)
-		print("PARTNUM (OK):",d_partnum_ok)
+	d_partnum_ok=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+	if not is_uint32(d_partnum_ok):
+		err_msg=f"err in PART NUMBER: {_ERR_UINT32}"
+		# if assertion:
+		# 	raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		if verify_only:
+			return False
+		return {}
 
 	offset=offset+readmax
 
@@ -432,11 +555,19 @@ def parse_efi_filepathlist_node_harddrive(
 
 	readmax=8
 
-	d_pstartlba=data[offset:offset+readmax]
-	d_partstartlba_ok=int.from_bytes(d_pstartlba,"little")
-	if debug:
-		print("PART START LBA:",d_pstartlba)
-		print("PART START LBA (OK):",d_partstartlba_ok)
+	d_partstartlba_ok=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+	if not is_uint64(d_partstartlba_ok):
+		err_msg=f"err in PART START LBA: {_ERR_UINT64}"
+		# if assertion:
+		# 	raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		if verify_only:
+			return False
+		return {}
 
 	offset=offset+readmax
 
@@ -446,11 +577,19 @@ def parse_efi_filepathlist_node_harddrive(
 
 	readmax=8
 
-	d_partsize=data[offset:offset+readmax]
-	d_partsize_ok=int.from_bytes(d_partsize,"little")
-	if debug:
-		print("PART SIZE:",d_partsize)
-		print("PART SIZE (OK):",d_partsize_ok)
+	d_partsize_ok=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+	if not is_uint64(d_partsize_ok):
+		err_msg=f"err in PART SIZE: {_ERR_UINT64}"
+		# if assertion:
+		# 	raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		if verify_only:
+			return False
+		return {}
 
 	offset=offset+readmax
 
@@ -460,11 +599,24 @@ def parse_efi_filepathlist_node_harddrive(
 
 	readmax=16
 
-	d_partguid=data[offset:offset+readmax]
-	d_partguid_ok=str(UUID(bytes_le=d_partguid))
-	if debug:
-		print("PART GUID:",d_partguid)
-		print("PART GUID (OK):",d_partguid_ok)
+	tmp:Optional[UUID]=None
+	try:
+		tmp=UUID(
+			bytes_le=data[
+				offset:offset+readmax
+			]
+		)
+	except Exception as exc:
+		err_msg=f"err in PART GUID: {exc}"
+		# if assertion:
+		# 	raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		if verify_only:
+			return False
+		return {}
+
+	d_partguid_ok=str(tmp)
 
 	offset=offset+readmax
 
@@ -474,11 +626,19 @@ def parse_efi_filepathlist_node_harddrive(
 
 	readmax=1
 
-	d_mbrtype=data[offset:offset+readmax]
-	d_mbrtype_ok=int.from_bytes(d_mbrtype,"little")
-	if debug:
-		print("MBRTYPE:",d_mbrtype)
-		print("MBRTYPE (OK):",d_mbrtype_ok)
+	d_mbrtype_ok=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+	if not is_uint8(d_mbrtype_ok):
+		err_msg=f"err in MBR TYPE: {_ERR_UINT8}"
+		# if assertion:
+		# 	raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		if verify_only:
+			return False
+		return {}
 
 	offset=offset+readmax
 
@@ -488,15 +648,26 @@ def parse_efi_filepathlist_node_harddrive(
 
 	readmax=1
 
-	d_sigtype=data[offset:offset+readmax]
-	d_sigtype_ok=int.from_bytes(d_sigtype,"little")
-	if debug:
-		print("SIGNTYPE:",d_sigtype)
-		print("SIGNTYPE (OK):",d_sigtype_ok)
+	d_sigtype_ok=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+	if not is_uint8(d_sigtype_ok):
+		err_msg=f"err in SIGN TYPE: {_ERR_UINT8}"
+		if assertion:
+			raise ValueError(err_msg)
+		if debug:
+			print(err_msg)
+		if verify_only:
+			return False
+		return {}
 
 	offset=offset+readmax
 
 	progress=offset-data_offset
+
+	if verify_only:
+		return True
 
 	return {
 		"node":_EFI_NODE_HARD_DRIVE,
@@ -514,11 +685,9 @@ def parse_efi_filepathlist_node_filepath(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		debug:bool=False
-	)->dict:
-
-	if debug:
-		print("\nTOPARSE",data[data_offset:])
+		debug:bool=False,
+		verify_only:bool=False
+	)->Union[bool,dict]:
 
 	# NOTE:
 
@@ -531,11 +700,19 @@ def parse_efi_filepathlist_node_filepath(
 
 	x_nodesize=-1
 	if not unsafe:
+
 		x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_head(
 			data,data_offset=data_offset,
 			debug=debug
 		)
 		if not (x_type==4 and x_subtype==4):
+			if debug:
+				print(
+					"err in header:"
+					" does not match type 4 and sybtype 4"
+				)
+			if verify_only:
+				return False
 			return {}
 
 	offset=data_offset+4
@@ -555,20 +732,30 @@ def parse_efi_filepathlist_node_filepath(
 	if not has_nodesize:
 		d_filepath_end=data[offset:].find(_NULLTERM)
 		if d_filepath_end==-1:
+			if debug:
+				print(
+					"err in filepath field:"
+					" not null terminated"
+				)
+			if verify_only:
+				return False
 			return {}
 
 		if not d_filepath_end%2==0:
 			d_filepath_end=d_filepath_end+1
 
 	d_filepath=data[offset:offset+d_filepath_end-2]
-	if debug:
-		print(d_filepath)
+	# if debug:
+	#	# print(d_filepath)
 
 	d_filepath_ok=d_filepath.decode(_ENC_UTF16LE)
 
 	offset=offset+d_filepath_end
 
 	progress=offset-data_offset
+
+	if verify_only:
+		return True
 
 	return {
 		"node":_EFI_NODE_FILEPATH,
@@ -580,7 +767,8 @@ def parse_efi_filepathlist_node_filepath(
 def parse_efi_filepathlist_t0x04(
 		data:bytes,
 		data_offset:int=0,
-		debug:bool=False
+		debug:bool=False,
+		skip_fixed_size_nodes:bool=False,
 	)->list:
 
 	offset=data_offset
@@ -588,18 +776,29 @@ def parse_efi_filepathlist_t0x04(
 
 	nodes=[]
 
+	corrupted=False
+
 	while True:
+
+		if corrupted:
+			print("This FilepathList is corrupted")
+			break
 
 		if debug:
 			print("PROGRESS:",offset,"/",maxlen)
-			print("REMAINING:",data[offset:])
-	
+
 		if offset==maxlen:
 			break
+
 		if offset>maxlen:
 			break
 
+		if debug:
+			print("REMAINING:",data[offset:])
+
 		if data[offset:offset+4]==_EFI_NODE_HARD_DRIVE:
+
+			# NOTE: fix size node
 
 			if debug:
 				print("Detected: Node 04 01")
@@ -608,14 +807,27 @@ def parse_efi_filepathlist_t0x04(
 				data,
 				data_offset=offset,
 				unsafe=True,
-				debug=debug
+				debug=debug,
+				verify_only=skip_fixed_size_nodes
 			)
-			# print(node_hdd)
-			payload_size=node_hdd["payload_size"]
+
+			payload_size=0
+			if skip_fixed_size_nodes:
+				if not node_hdd:
+					corrupted=True
+					continue
+
+				payload_size=42
+
+			if not skip_fixed_size_nodes:
+				if len(node_hdd)==0:
+					corrupted=True
+					continue
+
+				payload_size=node_hdd["payload_size"]
+				nodes.append(node_hdd)
 
 			offset=offset+payload_size
-	
-			nodes.append(node_hdd)
 
 			continue
 
@@ -674,6 +886,7 @@ def build_efi_filepathlist_node_harddrive(
 		mbrtype:int=2,
 		sigtype:int=2,
 		assertion:bool=False,
+		verify_build:bool=False
 	)->Optional[bytes]:
 
 	# Builds a FilePathList Hard Drive node
@@ -775,9 +988,20 @@ def build_efi_filepathlist_node_harddrive(
 		print(err_msg)
 		return None
 
+	if verify_build:
+
+		if not parse_efi_filepathlist_node_harddrive(
+			payload,
+			verify_only=True
+		):
+			return None
+
 	return payload
 
-def build_efi_filepathlist_node_filepath(filepath:str)->bytes:
+def build_efi_filepathlist_node_filepath(
+		filepath:str,
+		verify_build:bool=False
+	)->bytes:
 
 	# Builds a FilePathList Filepath node
 
@@ -804,6 +1028,14 @@ def build_efi_filepathlist_node_filepath(filepath:str)->bytes:
 	# Size ?
 
 	payload=payload+enc_filepath
+
+	if verify_build:
+
+		if not parse_efi_filepathlist_node_filepath(
+			payload,
+			verify_only=True
+		):
+			return None
 
 	return payload
 
@@ -849,8 +1081,9 @@ def is_fwtype_legacy(
 
 def get_evar_BootCurrent(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		assertion:bool=True
-	)->Optional[str]:
+		assertion:bool=True,
+		raw_only:bool=False,
+	)->Union[bytes,Optional[str]]:
 
 	# Get the value inside the "BootCUrrent" EFI variable
 
@@ -859,6 +1092,9 @@ def get_evar_BootCurrent(
 		"BootCurrent",
 		assertion=assertion
 	)
+	if raw_only:
+		return data
+
 	if not isinstance(data,(bytes,bytearray)):
 		return None
 
@@ -886,7 +1122,8 @@ def get_evar_BootCurrent(
 
 def get_evar_BootNext(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		assertion:bool=False
+		assertion:bool=False,
+		raw_only:bool=False
 	)->Optional[str]:
 
 	# Get the value inside the "BootNext" EFI variable
@@ -896,8 +1133,11 @@ def get_evar_BootNext(
 		"BootNext",
 		assertion=assertion
 	)
+
 	if data is None:
 		return None
+	if raw_only:
+		return data
 
 	data_size=len(data)
 
@@ -925,7 +1165,7 @@ def get_evar_BootNext(
 def set_evar_BootNext(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
 		boot_entry:str,
-		assertion:bool=True,
+		assertion:bool=False,
 	)->bool:
 
 	# Set the new value for the "BootNext" EFI variable
@@ -952,7 +1192,9 @@ def set_evar_BootNext(
 
 def get_evar_BootOrder(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		as_list:bool=False,assertion:bool=True
+		as_list:bool=False,
+		assertion:bool=True,
+		raw_only:bool=False
 	)->Optional[Union[tuple,list]]:
 
 	# Get the value inside the "BootOrder" EFI Variable
@@ -964,6 +1206,9 @@ def get_evar_BootOrder(
 	)
 	if data is None:
 		return None
+
+	if raw_only:
+		return data
 
 	boot_order=parse_efi_BootOrder(data,as_list=as_list)
 
@@ -994,6 +1239,7 @@ def get_evar_BootNNNN(
 		boot_entry:str,
 		assertion:bool=True,
 		debug:bool=False,
+		raw_only:bool=True,
 	)->dict:
 
 	# Gets the contents of a specific boot entry
@@ -1009,6 +1255,10 @@ def get_evar_BootNNNN(
 		boot_entry,
 		assertion=assertion
 	)
+
+	if raw_only:
+		return data_bytes
+
 	if data_bytes is None:
 		return {}
 
@@ -1159,8 +1409,8 @@ def set_evar_BootNNNN(
 	# and filepath nodes
 
 	bytes_fpathlst=b""
-	for n in nodes:
-		bytes_fpathlst=bytes_fpathlst+n
+	for nnn in nodes:
+		bytes_fpathlst=bytes_fpathlst+nnn
 
 	bytes_fpathlst=bytes_fpathlst+_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH
 
@@ -1230,11 +1480,13 @@ def set_evar_BootNNNN(
 		return payload
 
 	if not isinstance(fun_SetFirmwareEnvironmentVariableExW,Callable):
+
 		return payload
 
 	ok=write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW,
-		boot_entry,payload,assertion=assertion
+		boot_entry,payload,
+		assertion=assertion
 	)
 
 	return ok
