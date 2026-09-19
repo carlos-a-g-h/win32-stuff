@@ -764,6 +764,8 @@ def parse_efi_filepathlist_node_filepath(
 		"payload_end":data_offset+progress
 	}
 
+# TODO: add support for ACPI and NVME namespace nodes
+
 def parse_efi_filepathlist_t0x04(
 		data:bytes,
 		data_offset:int=0,
@@ -872,8 +874,8 @@ def build_efi_BootOrder(boot_order:list)->bytes:
 
 	en_boot_entry=b""
 
+	# TODO: add some guard rails here
 	for entry in boot_order:
-
 		en_boot_entry=en_boot_entry+int(entry[4:],16).to_bytes(2,byteorder="little")
 
 	return en_boot_entry
@@ -1045,7 +1047,7 @@ def build_efi_filepathlist_node_filepath(
 
 def is_fwtype_uefi(
 		fun_GetFirmwareType:Callable,
-		assertion:bool=True
+		assertion:bool=False
 	)->bool:
 
 	# Returns wether the system is UEFI booted
@@ -1063,7 +1065,7 @@ def is_fwtype_uefi(
 
 def is_fwtype_legacy(
 		fun_GetFirmwareType:Callable,
-		assertion:bool=True
+		assertion:bool=False
 	)->bool:
 
 	# Returns wether the system is Legacy booted
@@ -1081,7 +1083,7 @@ def is_fwtype_legacy(
 
 def get_evar_BootCurrent(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		assertion:bool=True,
+		assertion:bool=False,
 		raw_only:bool=False,
 	)->Union[bytes,Optional[str]]:
 
@@ -1193,7 +1195,7 @@ def set_evar_BootNext(
 def get_evar_BootOrder(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		as_list:bool=False,
-		assertion:bool=True,
+		assertion:bool=False,
 		raw_only:bool=False
 	)->Optional[Union[tuple,list]]:
 
@@ -1217,7 +1219,7 @@ def get_evar_BootOrder(
 def set_evar_BootOrder(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
 		boot_order:Union[tuple,list],
-		assertion:bool=True,
+		assertion:bool=False,
 		debug:bool=False
 	)->Union[bytes,bool]:
 
@@ -1237,9 +1239,9 @@ def set_evar_BootOrder(
 def get_evar_BootNNNN(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry:str,
-		assertion:bool=True,
+		assertion:bool=False,
 		debug:bool=False,
-		raw_only:bool=True,
+		raw_only:bool=False,
 	)->dict:
 
 	# Gets the contents of a specific boot entry
@@ -1378,25 +1380,20 @@ def get_evar_BootNNNN(
 
 def set_evar_BootNNNN(
 		fun_SetFirmwareEnvironmentVariableExW:Optional[Callable],
-
 		# Boot####
 			boot_entry:str,
-
 		# The name of a Bootloader or an OS for example
 			description:str,
-
-		# List of nodes (harddrive + filepath)
+		# List of nodes WITHOUT including the end of filepath node
 			nodes:list,
-
-		# Attributes (don't touch this)
+		# Attributes (don't touch this unless you know what you're doing)
 			attributes:int=(
 				_EFI_LOAD_OPTION_ACTIVE | _EFI_LOAD_OPTION_CATEGORY_BOOT
 			),
-
 		# the OptionalData field
 			opdata:Optional[bytes]=None,
 
-		assertion:bool=True,
+		assertion:bool=False,
 		debug:bool=False
 	)->Union[bool,Optional[bytes]]:
 
