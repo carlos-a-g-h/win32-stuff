@@ -4,6 +4,12 @@
 # THIS IS A WORK IN PROGRESS. IF YOU BRICK YOUR FIRMWARE, OR SOMEONE ELSE'S,
 # THAT'S ON YOU, NOT ME
 
+# package: pywin32 {
+import win32api
+import win32con
+import win32security
+# }
+
 from random import randint
 
 import ctypes
@@ -11,13 +17,9 @@ from ctypes import (
 	Array,WinDLL,WinError,
 	get_last_error,wintypes,
 )
-
 import struct
 from typing import Callable,Optional,Union
 from uuid import UUID
-import win32api
-import win32con
-import win32security
 
 # Stuff inside Windows
 
