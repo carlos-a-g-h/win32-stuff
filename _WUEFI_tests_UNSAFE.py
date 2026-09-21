@@ -6,7 +6,9 @@ from typing import Optional
 
 from uuid import UUID
 
-from win32_UEFI import (
+from WPrivilege import env_gain_extra_priv
+
+from WUEFI import (
 
 	_EFI_NODE_HARD_DRIVE,
 

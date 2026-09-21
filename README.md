@@ -1,20 +1,32 @@
 # My Win32 stuff
 
-This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, or by subprocessing commandline programs that come OOTB on Windows
+This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, or by subprocessing commandline programs that come by default on Windows
 
 WANING: Many of the modules and scripts that will be uploaded here will require Admin privileges in order to work
 
-## win32_UEFI.py
+## WPrivilege
+
+A small python module with high level functions that can be used for managing the rights and privileges of a currently running process. It works by using pywin32
+
+Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WPrivilege.py)
+
+What can you do with this?
+
+- You can find out within a currently running process wether the process is elevated, the elevation type and wether it is running as Administrator or not
+
+- You can gain access to higher privilege beyond Administrator (read the source code for more details)
+
+## WUEFI.py
 
 A python module that lets you modify the EFI/UEFI firmware boot options. It works by using the Wndows API through ctypes
 
-Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/win32_UEFI.py)
+Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI.py)
 
-Example/tests script about boot entries [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_boot_entries.py)
+Example/tests script about boot entries [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_WUEFI_tests_boot_entries.py)
 
-Example/tests script about boot order [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_boot_order.py)
+Example/tests script about boot order [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_WUEFI_tests_boot_order.py)
 
-Example/tests script that creates a new boot entry [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_win32_UEFI_tests_UNSAFE.py)
+Example/tests script that creates a new boot entry [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_WUEFI_tests_UNSAFE.py)
 
 What works on a lower level?
 
