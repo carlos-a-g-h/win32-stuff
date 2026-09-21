@@ -4,12 +4,6 @@
 # THIS IS A WORK IN PROGRESS. IF YOU BRICK YOUR FIRMWARE, OR SOMEONE ELSE'S,
 # THAT'S ON YOU, NOT ME
 
-# package: pywin32 {
-import win32api
-import win32con
-import win32security
-# }
-
 from random import randint
 
 import ctypes
@@ -20,6 +14,11 @@ from ctypes import (
 import struct
 from typing import Callable,Optional,Union
 from uuid import UUID
+
+from WPrivilege import (
+	env_gain_extra_priv,
+	query_proc_priv_info
+)
 
 # Stuff inside Windows
 
@@ -52,6 +51,7 @@ _EFI_VAR_RUNTIME_ACCESS=0x00000004
 
 # EFI_LOAD_OPTION FilePathList Node headers
 
+_EFI_NODE_ACPI=b"\x02\x01"
 _EFI_NODE_HARD_DRIVE=b"\x04\x01\x2a\x00"
 _EFI_NODE_FILEPATH=b"\x04\x04"
 _EFI_NODE_END_OF_ENTIRE_DEVICE_PATH=b"\x7f\xff\x04\x00"
@@ -203,33 +203,37 @@ def gen_str_BootNNNN(
 			print(new,"already exists, trying a new one")
 
 	return new
+
+
+# NOTE: The folllowing function has been moved to WPrivilege.py
  
-def env_gain_aditional_privileges():
+# def env_gain_aditional_privileges():
 
-	# Gain aditional privileges that are necessary to work with stuff that
-	# Windows might be consider very sensitive, such as, interacting with
-	# EFI/UEFI firmware variables for example
+# 	# Gain aditional privileges that are necessary to work with stuff that
+# 	# Windows might be consider very sensitive, such as, interacting with
+# 	# EFI/UEFI firmware variables for example
 
-	token=win32security.OpenProcessToken(
-		win32api.GetCurrentProcess(),
-		win32con.TOKEN_QUERY | win32con.TOKEN_ADJUST_PRIVILEGES
-	)
+# 	token=win32security.OpenProcessToken(
+# 		win32api.GetCurrentProcess(),
+# 		win32con.TOKEN_QUERY | win32con.TOKEN_ADJUST_PRIVILEGES
+# 	)
 
-	priv_id=win32security.LookupPrivilegeValue(
-		None,"SeSystemEnvironmentPrivilege"
-	)
+# 	priv_id=win32security.LookupPrivilegeValue(
+# 		None,"SeSystemEnvironmentPrivilege"
+# 	)
 
-	win32security.AdjustTokenPrivileges(
-		token,False,[(
-			priv_id,
-			win32con.SE_PRIVILEGE_ENABLED
-		)]
-	)
-	err=win32api.GetLastError()
-	if not err==0:
-		raise WinError(err)
+# 	win32security.AdjustTokenPrivileges(
+# 		token,False,[(
+# 			priv_id,
+# 			win32con.SE_PRIVILEGE_ENABLED
+# 		)]
+# 	)
+# 	err=win32api.GetLastError()
+# 	if not err==0:
+# 		raise WinError(err)
 
-	print("THIS PROCESS HAS GAINED ADITIONAL PRIVILEGES")
+# 	print("THIS PROCESS HAS GAINED ADITIONAL PRIVILEGES")
+
 
 def get_fwtype(
 		fun_GetFirmwareType:Callable,
@@ -478,6 +482,118 @@ def parse_efi_filepathlist_node_head(
 		x_nodesize
 	)
 
+def parse_efi_filepathlist_node_acpi(
+		data:bytes,
+		data_offset:int=0,
+		unsafe:bool=False,
+		debug:bool=False,
+		assertion:bool=False,
+		verify_only:bool=False
+	)->Union[bool,dict]:
+
+	# NOTE:
+
+	# TYPE              SUBTYPE             END OF HEADER
+	# ACPI Device Path  Hard drive subtype  Node Length
+	# UINT8             UINT8               UINT16 LE
+	# Offset 0          Offset 1            Offset 2
+	# Size 1            Size 1              Size 2
+	# Bytes 02          Bytes 01            Bytes 0x000c ?
+
+	x_nodesize=0
+
+	offset=data_offset
+
+	if not unsafe:
+
+		# if not len(data[data_offset:data_offset+2])==_EFI_NODE_ACPI:
+
+		# 	err_msg=(
+		# 		"err in the data:"
+		# 		" the header does not represent an ACPI node"
+		# 	)
+		# 	if assertion:
+		# 		raise ValueError(err_msg)
+		# 	if debug:
+		# 		print(err_msg)
+		# 	if verify_only:
+		# 		return False
+		# 	return {}
+
+		x_type,x_subtype,x_nodesize=parse_efi_filepathlist_node_head(
+			data,data_offset=offset,
+			debug=debug
+		)
+		if not (x_type==2 and x_subtype==1):
+			if debug:
+				print(
+					"err in header:"
+					" does not match type 2 and sybtype 1"
+				)
+			if verify_only:
+				return False
+			return {}
+
+	offset=offset+4
+
+	# HID
+	# UINT32 LE
+	# Offset 4
+	# Size 4
+
+	# NOTE:
+	# the HID is an EISA Encoded hardware ID
+
+	readmax=4
+
+	hid_decimal=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+
+	hid_hex=f"{hid_decimal:08X}"
+
+	letters=""
+	for shift in (10,5,0):
+		n=(hid_decimal>>shift)&0x1F
+		letters=letters+chr(ord("A")+n-1)
+	hid=letters+f"{(hid_decimal>>16)&0xFFFF:04X}"
+
+
+	offset=offset+readmax
+
+	# UID
+	# UINT32 LE
+	# Offset 4
+	# Size 4
+
+	readmax=4
+
+	uid_value=int.from_bytes(
+		data[offset:offset+readmax],
+		byteorder="little"
+	)
+
+	offset=offset+readmax
+
+	progress=offset-data_offset
+
+	if verify_only:
+		return True
+
+	return {
+		"node":_EFI_NODE_ACPI,
+
+		"hid":hid,
+		"hid_decimal":hid_decimal,
+		"hid_hex":hid_hex,
+
+		"uid":uid_value,
+
+		"payload_size":progress,
+		"payload_end":data_offset+progress
+	}
+
 def parse_efi_filepathlist_node_harddrive(
 		data:bytes,
 		data_offset:int=0,
@@ -504,8 +620,8 @@ def parse_efi_filepathlist_node_harddrive(
 				"err in the data:"
 				" the given bytes are not enough to represent a hard drive node"
 			)
-			# if assertion:
-			# 	raise ValueError(err_msg)
+			if assertion:
+				raise ValueError(err_msg)
 			if debug:
 				print(err_msg)
 			if verify_only:
@@ -518,8 +634,8 @@ def parse_efi_filepathlist_node_harddrive(
 				"err in the header:"
 				" The header does not match with the hard drive node header"
 			)
-			# if assertion:
-			# 	raise ValueError(err_msg)
+			if assertion:
+				raise ValueError(err_msg)
 			if debug:
 				print(err_msg)
 			if verify_only:
@@ -541,8 +657,8 @@ def parse_efi_filepathlist_node_harddrive(
 	)
 	if not is_uint32(d_partnum_ok):
 		err_msg=f"err in PART NUMBER: {_ERR_UINT32}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
+		if assertion:
+			raise ValueError(err_msg)
 		if debug:
 			print(err_msg)
 		if verify_only:
@@ -563,8 +679,8 @@ def parse_efi_filepathlist_node_harddrive(
 	)
 	if not is_uint64(d_partstartlba_ok):
 		err_msg=f"err in PART START LBA: {_ERR_UINT64}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
+		if assertion:
+			raise ValueError(err_msg)
 		if debug:
 			print(err_msg)
 		if verify_only:
@@ -585,8 +701,8 @@ def parse_efi_filepathlist_node_harddrive(
 	)
 	if not is_uint64(d_partsize_ok):
 		err_msg=f"err in PART SIZE: {_ERR_UINT64}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
+		if assertion:
+			raise ValueError(err_msg)
 		if debug:
 			print(err_msg)
 		if verify_only:
@@ -610,8 +726,8 @@ def parse_efi_filepathlist_node_harddrive(
 		)
 	except Exception as exc:
 		err_msg=f"err in PART GUID: {exc}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
+		if assertion:
+			raise ValueError(err_msg)
 		if debug:
 			print(err_msg)
 		if verify_only:
@@ -634,8 +750,8 @@ def parse_efi_filepathlist_node_harddrive(
 	)
 	if not is_uint8(d_mbrtype_ok):
 		err_msg=f"err in MBR TYPE: {_ERR_UINT8}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
+		if assertion:
+			raise ValueError(err_msg)
 		if debug:
 			print(err_msg)
 		if verify_only:
@@ -721,7 +837,7 @@ def parse_efi_filepathlist_node_filepath(
 
 	# Filepath
 	# UINT32 LE NT
-	# Offset 0
+	# Offset 4
 	# Size ?
 
 	d_filepath_end=-1
@@ -881,6 +997,12 @@ def build_efi_BootOrder(boot_order:list)->bytes:
 		en_boot_entry=en_boot_entry+int(entry[4:],16).to_bytes(2,byteorder="little")
 
 	return en_boot_entry
+
+def build_efi_filepathlist_node_acpi(hid:str,uid:str)->Optional[bytes]:
+
+	# WORK IN PROGRESS
+
+	pass
 
 def build_efi_filepathlist_node_harddrive(
 		part_num:int,
@@ -1547,15 +1669,14 @@ if __name__=="__main__":
 
 		sys_exit(0)
 
-	# NOTE:
-	# If you get a 1314 error is because you need to run this module as
-	# Administrator
-	# If you get 1300 error, is because you also need to run the function
-	# called "init_gain_aditional_privileges()" so that the entire process
-	# is authorized to do modifications on parts of the system that require
-	# privileges beyond what the regular Administrator user already has
+	if not query_proc_priv_info(
+			get_is_elevated=False,
+			get_is_admin=True
+		):
+		print("You must run this program as administrator")
+		sys_exit(0)
 
-	env_gain_aditional_privileges()
+	env_gain_extra_priv()
 
 	GetFwType=import_GetFwType()
 

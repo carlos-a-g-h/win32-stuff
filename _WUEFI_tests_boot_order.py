@@ -2,9 +2,9 @@
 
 # DONE
 
-from win32_UEFI import (
+from WPrivilege import env_gain_extra_priv
 
-	env_gain_aditional_privileges,
+from WUEFI import (
 
 	import_GetFwEnVarW,
 
@@ -19,7 +19,7 @@ from win32_UEFI import (
 
 # Gain elevated privileges
 
-env_gain_aditional_privileges()
+env_gain_extra_priv()
 
 # Import the necessary function
 

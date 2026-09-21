@@ -4,12 +4,12 @@
 
 from typing import Optional
 
-from win32_UEFI import (
+from WPrivilege import env_gain_extra_priv
+
+from WUEFI import (
 
 	_EFI_NODE_HARD_DRIVE,
 	_EFI_NODE_END_OF_ENTIRE_DEVICE_PATH,
-
-	env_gain_aditional_privileges,
 
 	import_GetFwEnVarW,
 
@@ -27,7 +27,7 @@ from win32_UEFI import (
 
 # Gain elevated privileges
 
-env_gain_aditional_privileges()
+env_gain_extra_priv()
 
 # Import the necessary function (for read access only)
 
