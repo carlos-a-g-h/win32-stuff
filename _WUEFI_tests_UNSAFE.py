@@ -8,31 +8,26 @@ from uuid import UUID
 
 from WPrivilege import env_gain_extra_priv
 
+from WUEFI_symbols import _ELO_NODE_MEDIA_HARDDRIVE
+
 from WUEFI import (
-
-	_EFI_NODE_HARD_DRIVE,
-
-	env_gain_aditional_privileges,
-
-	import_GetFwEnVarW,
-
-	import_SetFwEnvVarExW,
-
 	get_evar_BootCurrent,
-
 	get_evar_BootNNNN,
-
 	get_evar_BootOrder,
 
 	set_evar_BootNext,
-
 	set_evar_BootOrder,
+	set_evar_BootNNNN
+)
 
-	set_evar_BootNNNN,
+from WUEFI_ctypes import (
+	import_GetFwEnVarW,
+	import_SetFwEnvVarExW
+)
 
-	build_efi_filepathlist_node_harddrive,
-
-	build_efi_filepathlist_node_filepath
+from WUEFI_serde import (
+	build_efi_filepathlist_node_Media_HardDrive,
+	build_efi_filepathlist_node_Media_FilePath
 )
 
 # Boot entry name and EFI filepath
@@ -45,7 +40,7 @@ const_filepath="\\EFI\\Boot\\grub2.bootx64.efi"
 
 # Get aditional privileges
 
-env_gain_aditional_privileges()
+env_gain_extra_priv()
 
 # Import functionality
 
@@ -81,7 +76,7 @@ part_guid:Optional[str]=None
 
 for n in boot_current_ok["filepath_list"]:
 
-	if not n.get("node")==_EFI_NODE_HARD_DRIVE:
+	if not n.get("node")==_ELO_NODE_MEDIA_HARDDRIVE:
 		continue
 
 	print("\nNODE:",n)
@@ -103,7 +98,7 @@ assert UUID(part_guid)
 
 # Create a new filepathlist
 
-node_filepath=build_efi_filepathlist_node_filepath(
+node_filepath=build_efi_filepathlist_node_Media_FilePath(
 	const_filepath,
 	verify_build=True
 )
@@ -111,7 +106,7 @@ if node_filepath is None:
 	print("\nINVALID FILEPATH NODE")
 	exit(1)
 
-node_harddive=build_efi_filepathlist_node_harddrive(
+node_harddive=build_efi_filepathlist_node_Media_HardDrive(
 	part_numb,part_slba,
 	part_size,part_guid,
 	verify_build=True

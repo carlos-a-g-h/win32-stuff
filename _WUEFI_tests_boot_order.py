@@ -4,17 +4,15 @@
 
 from WPrivilege import env_gain_extra_priv
 
-from WUEFI import (
+from WUEFI import get_evar_BootOrder
 
-	import_GetFwEnVarW,
+from WUEFI_ctypes import import_GetFwEnVarW
 
-	gen_str_BootNNNN,
+from WUEFI_utils import gen_str_BootNNNN
 
-	get_evar_BootOrder,
-
+from WUEFI_serde import (
 	build_efi_BootOrder,
-
-	parse_efi_BootOrder,
+	parse_efi_BootOrder
 )
 
 # Gain elevated privileges
