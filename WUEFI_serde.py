@@ -187,8 +187,6 @@ def parse_efi_filepathlist_node_Messaging_NVMeNamespace(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		# debug:bool=False,
-		# assertion:bool=False,
 		verify_build:bool=False
 	)->Union[bool,dict]:
 
@@ -221,17 +219,10 @@ def parse_efi_filepathlist_node_Messaging_NVMeNamespace(
 				"Type and subtype"
 				" mismatch on the header"
 			)
-			# if assertion:
-			# 	raise Exception()
-			# if debug:
-			# 	print(err_msg)
 			print(err_msg)
 			if verify_build:
 				return False
 			return {}
-
-		# if debug:
-		# 	print("Header OK:",header_info)
 
 		x_nodesize=header_info[2]
 
@@ -287,8 +278,6 @@ def parse_efi_filepathlist_node_ACPI_HID(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		# debug:bool=False,
-		# assertion:bool=False,
 		verify_build:bool=False
 	)->Union[bool,dict]:
 
@@ -320,10 +309,6 @@ def parse_efi_filepathlist_node_ACPI_HID(
 				"The header does not match with the"
 				" standardized header for an ACPI HID node"
 			)
-			# if assertion:
-			# 	raise ValueError(err_msg)
-			# if debug:
-			# 	print(err_msg)
 			print(err_msg)
 			if verify_build:
 				return False
@@ -399,9 +384,7 @@ def parse_efi_filepathlist_node_Hardware_PCI(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		# debug:bool=False,
-		# assertion:bool=False,
-		verify_build:bool=False,
+		verify_build:bool=False
 	)->Union[bool,dict]:
 
 	# PCI Device Path Node
@@ -436,10 +419,6 @@ def parse_efi_filepathlist_node_Hardware_PCI(
 				"The given header does not match the"
 				" standards for a PCI header"
 			)
-			# if assertion:
-			# 	raise ValueError(err_msg)
-			# if debug:
-			# 	print(err_msg)
 			print(err_msg)
 			if verify_build:
 				return False
@@ -463,10 +442,6 @@ def parse_efi_filepathlist_node_Hardware_PCI(
 	print("d_function:",d_function)
 	if not is_uint8(d_function):
 		err_msg=f"err in Function: {_ERR_UINT8}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -487,10 +462,6 @@ def parse_efi_filepathlist_node_Hardware_PCI(
 	)
 	if not is_uint8(d_device):
 		err_msg=f"err in Device: {_ERR_UINT8}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -520,9 +491,7 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		# debug:bool=False,
-		# assertion:bool=False,
-		verify_build:bool=False,
+		verify_build:bool=False
 	)->Union[bool,dict]:
 
 	# Hard Drive Node
@@ -551,17 +520,12 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 			req_type=4,
 			req_subtype=1,
 			req_nodesize=42,
-			# debug=debug
 		)
 		if header_info is None:
 			err_msg=(
 				"The given header does not match the"
 				" standardized Media Hardrive node header"
 			)
-			# if assertion:
-			# 	raise ValueError(err_msg)
-			# if debug:
-			# 	print(err_msg)
 			print(err_msg)
 			if verify_build:
 				return False
@@ -584,10 +548,6 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 	)
 	if not is_uint32(d_partnum_ok):
 		err_msg=f"err in PART NUMBER: {_ERR_UINT32}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -607,10 +567,6 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 	)
 	if not is_uint64(d_partstartlba_ok):
 		err_msg=f"err in PART START LBA: {_ERR_UINT64}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -630,10 +586,6 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 	)
 	if not is_uint64(d_partsize_ok):
 		err_msg=f"err in PART SIZE: {_ERR_UINT64}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -656,10 +608,6 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 		)
 	except Exception as exc:
 		err_msg=f"err in PART GUID: {exc}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -681,10 +629,6 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 	)
 	if not is_uint8(d_mbrtype_ok):
 		err_msg=f"err in MBR TYPE: {_ERR_UINT8}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -704,10 +648,6 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 	)
 	if not is_uint8(d_sigtype_ok):
 		err_msg=f"err in SIGN TYPE: {_ERR_UINT8}"
-		# if assertion:
-		# 	raise ValueError(err_msg)
-		# if debug:
-		# 	print(err_msg)
 		print(err_msg)
 		if verify_build:
 			return False
@@ -742,8 +682,6 @@ def parse_efi_filepathlist_node_Media_FilePath(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		# debug:bool=False,
-		# assertion:bool=False,
 		verify_build:bool=False,
 	)->Union[bool,dict]:
 
@@ -768,7 +706,6 @@ def parse_efi_filepathlist_node_Media_FilePath(
 			data_offset=offset,
 			req_type=4,
 			req_subtype=4,
-			# debug=debug
 		)
 		if header_info is None:
 
@@ -777,10 +714,6 @@ def parse_efi_filepathlist_node_Media_FilePath(
 				" with the corresponding header"
 				" for a Media Filepath Node"
 			)
-			# if assertion:
-			# 	raise ValueError(err_msg)
-			# if debug:
-			# 	print(err_msg)
 			print(err_msg)
 			if verify_build:
 				return False
@@ -809,8 +742,6 @@ def parse_efi_filepathlist_node_Media_FilePath(
 				"err in filepath field:"
 				" not null terminated"
 			)
-			# if debug:
-			# 	print(err_msg)
 			print(err_msg)
 			if verify_build:
 				return False
@@ -1057,7 +988,7 @@ def parse_efi_filepathlist(
 
 def build_efi_BootOrder(
 		boot_order:list,
-		verify_build:bool=False,
+		verify_build:bool=False
 	)->Optional[bytes]:
 
 	boot_order_ok=b""
@@ -1119,7 +1050,7 @@ def build_efi_BootOrder(
 def build_spec_EISAID_to_HID(
 		eisa_id:str,
 		get_hid_int:bool=False,
-		get_hid_hex:bool=False,
+		get_hid_hex:bool=False
 	)->Optional[Union[bytes,tuple]]:
 
 	# Turns an EISA ID to an HID
@@ -1455,36 +1386,3 @@ def build_efi_filepathlist_node_Media_FilePath(
 		return True
 
 	return payload
-
-if __name__=="__main__":
-
-	# ACPI HID tests
-
-	# hid=build_spec_EISAID_to_HID(
-	# 	"PNP0A03",
-	# 	get_hid_int=True,
-	# 	get_hid_hex=True
-	# )
-
-	# print(hid)
-
-	# print(build_efi_filepathlist_node_ACPI_HID("PNP0A03",0,verify_only=True))
-
-	sample_data=b'\x02\x01\x0c\x00\xd0A\x03\n\x00\x00\x00\x00\x01\x01\x06\x00\x00\x14\x01\x01\x06\x00\x00\x00\x03\x17\x10\x00\x01\x00\x00\x008\xf6\x01V0\x13J\xcb\x04\x01*\x00\x01\x00\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00\x00\xf0\x05\x00\x00\x00\x00\x00\xcb>\xf7n\x0fK\xc3H\x8a6\x85hj\x8bR\xf0\x02\x02\x04\x040\x00\\\x00E\x00F\x00I\x00\\\x00b\x00o\x00o\x00t\x00\\\x00b\x00o\x00o\x00t\x00x\x006\x004\x00.\x00e\x00f\x00i\x00\x00\x00\x7f\xff\x04\x00'
-
-	print(
-		"\nParsed data:",
-		parse_efi_filepathlist(
-			sample_data,
-			debug=True
-		)
-	)
-
-	print(
-		"\nParsed data (skipping fixed size nodes):",
-		parse_efi_filepathlist(
-			sample_data,debug=True,
-			skip_fixed_size_nodes=True
-		)
-	)
-

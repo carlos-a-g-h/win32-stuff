@@ -40,7 +40,7 @@ from WUEFI_symbols import (
 
 def get_fwtype(
 		fun_GetFirmwareType:Callable,
-		assertion:bool=True
+		debug:bool=False
 	)->Optional[int]:
 
 	# Returns the firmware type as an int
@@ -52,10 +52,10 @@ def get_fwtype(
 
 		err=get_last_error()
 		err_msg="Failed to determine the type of firmware"
-		if assertion:
+		if debug:
 			raise WinError(err,err_msg)
+		print(err,err_msg)
 
-		print(err_msg)
 		return None
 
 	return res_dword.value
@@ -64,7 +64,7 @@ def read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		varname:str,
 		efiguid:str=_EFI_GLOBALVAR,
-		assertion:bool=True
+		debug:bool=True
 	)->Optional[bytes]:
 
 	# Reads an EFI variable
@@ -105,10 +105,10 @@ def read_efi_variable(
 
 	if err_msg is not None:
 
-		if assertion:
+		if debug:
 			raise WinError(err,err_msg)
-
 		print(err,err_msg)
+
 		return None
 
 	return data
@@ -123,7 +123,7 @@ def write_efi_variable(
 				| _EFI_VAR_BOOTSERVICE_ACCESS
 				| _EFI_VAR_RUNTIME_ACCESS
 		),
-		assertion:bool=False,
+		debug:bool=False,
 	)->bool:
 
 	# Sets a new value for an EFI variable
@@ -152,9 +152,8 @@ def write_efi_variable(
 			" for the selected EFI var"
 		)
 
-		if assertion:
+		if debug:
 			raise WinError(err,err_msg)
-
 		print(err,err_msg)
 
 	return done==1
@@ -163,8 +162,8 @@ def write_efi_variable(
 
 def get_evar_BootCurrent(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		assertion:bool=False,
 		raw_only:bool=False,
+		debug:bool=False
 	)->Union[bytes,Optional[str]]:
 
 	# Get the value inside the "BootCUrrent" EFI variable
@@ -172,7 +171,7 @@ def get_evar_BootCurrent(
 	data:Optional[bytes]=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootCurrent",
-		assertion=assertion
+		debug=debug
 	)
 	if raw_only:
 		return data
@@ -188,11 +187,11 @@ def get_evar_BootCurrent(
 			" contain exactly 2 bytes,"
 			f" but recieved {data_size}"
 		)
-		if not assertion:
-			print(err_msg)
-			return None
+		if debug:
+			raise Exception(err_msg)
 
-		raise Exception(err_msg)
+		print(err_msg)
+		return None
 
 	data_unpkg=struct.unpack(
 		"<H",data
@@ -204,8 +203,8 @@ def get_evar_BootCurrent(
 
 def get_evar_BootNext(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		assertion:bool=False,
-		raw_only:bool=False
+		raw_only:bool=False,
+		debug:bool=False
 	)->Optional[str]:
 
 	# Get the value inside the "BootNext" EFI variable
@@ -213,9 +212,8 @@ def get_evar_BootNext(
 	data:Optional[bytes]=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootNext",
-		assertion=assertion
+		debug=debug
 	)
-
 	if data is None:
 		return None
 	if raw_only:
@@ -229,16 +227,17 @@ def get_evar_BootNext(
 			" contain exactly 2 bytes,"
 			f" but recieved {data_size}"
 		)
-		if not assertion:
-			print(err_msg)
-			return None
+		if not debug:
+			raise Exception(err_msg)
 
-		raise Exception(err_msg)
+		print(err_msg)
+		return None
 
 	data_unpkg=struct.unpack(
 		"<H",data
 	)
-	print(data_unpkg)
+	# if debug:
+	# 	print(data_unpkg)
 
 	boot_entry=data_unpkg[0]
 
@@ -247,7 +246,7 @@ def get_evar_BootNext(
 def set_evar_BootNext(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
 		boot_entry:str,
-		assertion:bool=False,
+		debug:bool=False,
 	)->bool:
 
 	# Set the new value for the "BootNext" EFI variable
@@ -267,7 +266,7 @@ def set_evar_BootNext(
 	done=write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW,
 		"BootNext",boot_next_val,
-		assertion=assertion
+		debug=debug
 	)
 
 	return done
@@ -275,8 +274,8 @@ def set_evar_BootNext(
 def get_evar_BootOrder(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
 		as_list:bool=False,
-		assertion:bool=False,
-		raw_only:bool=False
+		raw_only:bool=False,
+		debug:bool=False
 	)->Optional[Union[tuple,list]]:
 
 	# Get the value inside the "BootOrder" EFI Variable
@@ -284,7 +283,7 @@ def get_evar_BootOrder(
 	data:Optional[bytes]=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootOrder",
-		assertion=assertion
+		debug=debug
 	)
 	if data is None:
 		return None
@@ -299,7 +298,6 @@ def get_evar_BootOrder(
 def set_evar_BootOrder(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
 		boot_order:Union[tuple,list],
-		assertion:bool=False,
 		debug:bool=False
 	)->Union[bytes,bool]:
 
@@ -311,7 +309,7 @@ def set_evar_BootOrder(
 	ok=write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW,
 		"BootOrder",data_bytes,
-		assertion=assertion
+		debug=debug
 	)
 
 	return ok
@@ -319,7 +317,6 @@ def set_evar_BootOrder(
 def get_evar_BootNNNN(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry:str,
-		assertion:bool=False,
 		debug:bool=False,
 		raw_only:bool=False,
 	)->dict:
@@ -335,7 +332,7 @@ def get_evar_BootNNNN(
 	data_bytes=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry,
-		assertion=assertion
+		debug=debug
 	)
 
 	if raw_only:
@@ -475,7 +472,6 @@ def set_evar_BootNNNN(
 		# the OptionalData field
 			opdata:Optional[bytes]=None,
 
-		assertion:bool=False,
 		debug:bool=False
 	)->Union[bool,Optional[bytes]]:
 
@@ -506,7 +502,7 @@ def set_evar_BootNNNN(
 
 	bytes_attributes=struct.pack("<I",attributes)
 
-	if assertion and debug:
+	if debug:
 		assert len(bytes_attributes)==4
 
 	payload=payload+bytes_attributes
@@ -519,7 +515,7 @@ def set_evar_BootNNNN(
 
 	bytes_fpathlst_len=fpathlst_len.to_bytes(2,byteorder="little")
 
-	if assertion and debug:
+	if debug:
 		assert len(bytes_fpathlst_len)==2
 
 	payload=payload+bytes_fpathlst_len
@@ -565,7 +561,7 @@ def set_evar_BootNNNN(
 	ok=write_efi_variable(
 		fun_SetFirmwareEnvironmentVariableExW,
 		boot_entry,payload,
-		assertion=assertion
+		debug=debug
 	)
 
 	return ok
@@ -578,28 +574,16 @@ if __name__=="__main__":
 	from sys import exit as sys_exit
 	from sys import argv as sys_argv
 
+	from WPrivilege import (
+		query_proc_priv_info,
+		env_gain_extra_priv
+	)
 	from WUEFI_ctypes import (
 		import_GetFwType,
 		import_GetFwEnVarW,
 		import_SetFwEnvVarExW
 	)
-
 	from WUEFI_utils import is_fwtype_uefi
-
-	from WPrivilege import (
-		query_proc_priv_info,
-		env_gain_extra_priv
-	)
-
-	# from WUEFI_evars import (
-	# 	get_evar_BootCurrent,
-	# 	get_evar_BootNext,
-	# 	get_evar_BootNNNN,
-	# 	get_evar_BootOrder,
-
-	# 	set_evar_BootNext,
-	# 	set_evar_BootOrder
-	# )
 
 	arg_main=sys_argv[1].strip().lower()
 
