@@ -22,9 +22,9 @@ from WUEFI_evars import (
 
 def main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
 
-		# GetFirmwareEnvironmentVariableW
+		# (Win32API) GetFirmwareEnvironmentVariableW
 			fun_GetFwEnVarW:Callable,
-		# SetFirmwareEnvironmentVariableExW
+		# (Win32API) SetFirmwareEnvironmentVariableExW
 			fun_SetFwEnvVarExW:Callable,
 
 		path_efi:str,
@@ -32,7 +32,7 @@ def main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
 		metadata:Optional[bytes]=None,
 
 		opt_BootNext:bool=False,
-		opt_BootOrder_addfirst:bool=False
+		opt_BootOrder_addfirst:bool=False,
 
 		debug:bool=False
 
@@ -128,7 +128,7 @@ def main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
 		print("error_10")
 		return None
 
-	# (11, 12) Set bootsequence
+	# (11, 12) Set BootOrder and BootNext thorugh BCDEDIT
 
 	if opt_BootNext:
 		if not bcdedit_fwbs_new(
@@ -184,7 +184,7 @@ if __name__=="__main__":
 		the_desc,
 
 		opt_BootNext=False,
-		opt_BootOrder_addfirst=False
+		opt_BootOrder_addfirst=False,
 
 		debug=True
 	)

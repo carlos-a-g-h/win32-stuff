@@ -2,6 +2,11 @@
 
 from typing import Mapping,Optional,Union
 
+from WUEFI_symbols import (
+	_ID_BOOTMGR,
+	_ID_FWBOOTMGR
+)
+
 from WUEFI_utils import (
 	fix_str as util_fix_str,
 	is_guid as util_is_guid,
@@ -16,15 +21,6 @@ from WUEFI_utils import (
 # it contains some basic functionality
 
 # Common identifiers
-
-_ID_BOOTMGR="{bootmgr}"
-_ID_FWBOOTMGR="{fwbootmgr}"
-
-# Arguments related to lists
-
-_ARG_ADDFIRST="/addfirst"
-_ARG_ADDLAST="/addlast"
-_ARG_REMOVE="/remove"
 
 ###############################################################################
 
