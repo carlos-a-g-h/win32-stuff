@@ -1026,7 +1026,9 @@ def parse_efi_filepathlist(
 				node_index=node_index+1
 				nodes.append({
 					"header":_ELO_NODE_END,
-					"node_index":node_index
+					"node_index":node_index,
+					"payload_size":4,
+					"payload_end":offset+4
 				})
 
 				break
@@ -1037,43 +1039,15 @@ def parse_efi_filepathlist(
 					" cannot be parsed by this program"
 				)
 
-		nodes.append({"raw":data[offset:]})
+		payload_size=len(data[offset:])
+
+		nodes.append({
+			"raw":data[offset:],
+			"payload_size":payload_size,
+			"payload_end":payload_size+offset
+		})
+
 		break
-
-		#############################################################################
-
-		# if data[offset:offset+2]==_ELO_NODE_MEDIA_FILEPATH:
-
-		# 	if debug:
-		# 		print("Detected: Node 04 04")
-
-		# 	node_fpath=parse_efi_filepathlist_node_Media_FilePath(
-		# 		data,
-		# 		data_offset=offset,
-		# 		debug=debug
-		# 	)
-		# 	payload_size=node_fpath["payload_size"]
-
-		# 	offset=offset+payload_size
-	
-		# 	node_index=node_index+1
-		# 	node_fpath.update({"node_index":node_index})
-		# 	nodes.append(node_fpath)
-
-		# 	continue
-
-		# if data[offset:offset+4]==_ELO_NODE_END:
-
-		# 	if debug:
-		# 		print("Detected: End of Device Path Node")
-
-		# 	nodes.append({"node":_ELO_NODE_END})
-
-		# 	break
-
-		# nodes.append({"raw":data[offset:]})
-
-		# break
 
 	return nodes
 

@@ -3,12 +3,12 @@
 # OK
 
 from pathlib import Path,WindowsPath
-
 from random import randint
-
 from subprocess import run as sub_run,CompletedProcess
+from typing import Callable,Mapping,Optional,Union
 
-from typing import Mapping,Optional,Union
+import ctypes
+from ctypes import wintypes,WinError,get_last_error
 
 from WUEFI_symbols import (
 
@@ -172,43 +172,6 @@ def is_guid(
 		return data_ok
 
 	return True
-
-def gen_str_BootNNNN(
-		already_exist:Union[tuple,list]=[],
-		debug:bool=False
-	)->Optional[str]:
-
-	# Generates a random Boot#### string
-
-	# Very useful for creating a new name for a boot entry
-	# You can feed this function a list or a tuple of names to
-	# avoid a collision
-
-	qtty=len(already_exist)
-	if qtty==_UINT16_MAX:
-		if debug:
-			print("what the f***")
-
-		return None
-
-	must_check=(not qtty==0)
-
-	while True:
-
-		new="Boot"+hex(randint(0,_UINT16_MAX-1))[2:]
-		if not must_check:
-			break
-
-		if new not in already_exist:
-			if debug:
-				print(new,"is unique!")
-
-			break
-
-		if debug:
-			print(new,"already exists, trying a new one")
-
-	return new
 
 def fix_str(
 		data_raw:Union[Optional[str],bytes],
@@ -411,3 +374,102 @@ def subproc(
 		result_stdout,
 		result_stderr
 	)
+def get_fwtype(
+		fun_GetFirmwareType:Callable,
+		assertion:bool=True
+	)->Optional[int]:
+
+	# Returns the firmware type as an int
+
+	res_dword=wintypes.DWORD()
+	if not fun_GetFirmwareType(
+			ctypes.byref(res_dword)
+		):
+
+		err=get_last_error()
+		err_msg="Failed to determine the type of firmware"
+		if assertion:
+			raise WinError(err,err_msg)
+
+		print(err_msg)
+		return None
+
+	return res_dword.value
+
+###############################################################################
+
+# Misc functions
+
+def is_fwtype_uefi(
+		fun_GetFirmwareType:Callable,
+		assertion:bool=False
+	)->bool:
+
+	# Returns wether the system is UEFI booted
+
+	result=get_fwtype(
+		fun_GetFirmwareType,
+		assertion=assertion
+	)
+
+	if assertion:
+		if result==0:
+			raise Exception("Unknown firmware type")
+
+	return (result==2)
+
+def is_fwtype_legacy(
+		fun_GetFirmwareType:Callable,
+		assertion:bool=False
+	)->bool:
+
+	# Returns wether the system is Legacy booted
+
+	result=get_fwtype(
+		fun_GetFirmwareType,
+		assertion=assertion
+	)
+
+	if assertion:
+		if result==0:
+			raise Exception("Unknown firmware type")
+
+	return (result==1)
+
+def gen_str_BootNNNN(
+		already_exist:Union[tuple,list]=[],
+		debug:bool=False
+	)->Optional[str]:
+
+	# Generates a random Boot#### string
+
+	# Very useful for creating a new name for a boot entry
+	# You can feed this function a list or a tuple of names to
+	# avoid a collision
+
+	qtty=len(already_exist)
+	if qtty==_UINT16_MAX:
+		if debug:
+			print("what the f***")
+
+		return None
+
+	must_check=(not qtty==0)
+
+	while True:
+
+		new="Boot"+hex(randint(0,_UINT16_MAX-1))[2:]
+		if not must_check:
+			break
+
+		if new not in already_exist:
+			if debug:
+				print(new,"is unique!")
+
+			break
+
+		if debug:
+			print(new,"already exists, trying a new one")
+
+	return new
+

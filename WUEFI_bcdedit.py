@@ -17,7 +17,7 @@ from WUEFI_utils import (
 
 # Common identifiers
 
-_ID_BOOTMGR="{bootgmr}"
+_ID_BOOTMGR="{bootmgr}"
 _ID_FWBOOTMGR="{fwbootmgr}"
 
 # Arguments related to lists
@@ -137,7 +137,7 @@ def util_filter_identifier_list(
 
 # Parsing functions
 
-def parse_bcdedit_entry_listfield(
+def parse_enum_entry_listfield(
 		lines_list:list,
 		offset:int,
 		opt_items_as_list:bool=False,
@@ -205,7 +205,7 @@ def parse_bcdedit_entry_listfield(
 
 	return items_ok
 
-def parse_bcdedit_entry(
+def parse_enum_entry(
 		raw_lines:list,offset:int,
 		kli:Union[tuple,list]=(
 			"displayorder",
@@ -276,7 +276,7 @@ def parse_bcdedit_entry(
 
 			if pair[0] in kli:
 				fields.update(
-					parse_bcdedit_entry_listfield(
+					parse_enum_entry_listfield(
 						raw_lines,pos,
 						opt_wrap_in_a_hashmap=True
 					)
@@ -292,7 +292,7 @@ def parse_bcdedit_entry(
 
 	return fields
 
-def parse_bcdedit_enum(
+def parse_enum(
 		raw_str:str,
 		kli:Union[tuple,list]=(
 			"displayorder",
@@ -324,7 +324,7 @@ def parse_bcdedit_enum(
 		if line.startswith("-"):
 
 			content.update(
-				parse_bcdedit_entry(
+				parse_enum_entry(
 					lines_as_list,
 					count,
 					kli=kli
@@ -345,7 +345,7 @@ def parse_bcdedit_enum(
 
 # Basic and low level BCDEDIT funtions 
 
-def cmd_bcdedit_enum_firmware(
+def cmd_entry_enum(
 		identifier:Optional[str]=None,
 		debug:bool=False
 	)->list:
@@ -383,9 +383,9 @@ def cmd_bcdedit_enum_firmware(
 	if not result_subproc[0]==0:
 		return []
 
-	return parse_bcdedit_enum(result_subproc[1])
+	return parse_enum(result_subproc[1])
 
-def cmd_bcdedit_copy(
+def cmd_entry_copy(
 		identifier:str=_ID_BOOTMGR,
 		description:Optional[str]=None,
 		debug:bool=False
@@ -442,7 +442,7 @@ def cmd_bcdedit_copy(
 		return_data=True
 	)
 
-def cmd_bcdedit_modify(
+def cmd_entry_modify(
 		identifier:str,
 		name:str,
 		value:Optional[str],
@@ -491,7 +491,7 @@ def cmd_bcdedit_modify(
 
 	return (result_subproc[0]==0)
 
-def cmd_bcdedit_delete(
+def cmd_entry_delete(
 		identifier:str,
 		debug:bool=False
 	)->bool:
@@ -531,13 +531,13 @@ def cmd_bcdedit_delete(
 # NOTE:
 # the *fwdo_modify* functions have not been tested yet
 
-def cmd_bcdedit_fwdo_list(
+def cmd_fw_do_list(
 		detailed:bool=False,
 		debug:bool=False
 	)->list:
 
 	# Returns the firmware display order
-	# It's almost the same as the "cmd_bcdedit_enum_firmware" function, but way
+	# It's almost the same as the "cmd_enum_firmware" function, but way
 	# more specific
 
 	result_subproc=util_subproc(
@@ -551,7 +551,7 @@ def cmd_bcdedit_fwdo_list(
 	if not result_subproc[0]==0:
 		return []
 
-	result_parsed=parse_bcdedit_enum(
+	result_parsed=parse_enum(
 		result_subproc[1],
 		kli=["displayorder"]
 	)
@@ -572,7 +572,7 @@ def cmd_bcdedit_fwdo_list(
 		for identifier in fwdo_list:
 
 			entries.extend(
-				cmd_bcdedit_enum_firmware(
+				cmd_entry_enum(
 					identifier,
 					debug=debug
 				)
@@ -582,7 +582,7 @@ def cmd_bcdedit_fwdo_list(
 
 	return fwdo_list
 
-def cmd_bcdedit_fwdo_modify_replace(
+def cmd_fw_do_modify_replace(
 		id_list:Union[list,tuple],
 		debug:bool=False,
 		test:bool=False
@@ -619,7 +619,7 @@ def cmd_bcdedit_fwdo_modify_replace(
 
 	return (result_subproc[0]==0)
 
-def cmd_bcdedit_fwdo_modify_addfirst(
+def cmd_fw_do_modify_addfirst(
 		id_list:Union[list,tuple],
 		debug:bool=False,
 		test:bool=False
@@ -655,7 +655,7 @@ def cmd_bcdedit_fwdo_modify_addfirst(
 
 	return (result_subproc[0]==0)
 
-def cmd_bcdedit_fwdo_modify_addlast(
+def cmd_fw_do_modify_addlast(
 		id_list:Union[list,tuple],
 		debug:bool=False,
 		test:bool=False
@@ -691,7 +691,7 @@ def cmd_bcdedit_fwdo_modify_addlast(
 
 	return (result_subproc[0]==0)
 
-def cmd_bcdedit_fwdo_modify_remove(
+def cmd_fw_do_modify_remove(
 		identifier:str,
 		debug:bool=False,
 		test:bool=False
@@ -723,6 +723,37 @@ def cmd_bcdedit_fwdo_modify_remove(
 
 	return (result_subproc[0]==0)
 
+def cmd_fw_bs_modify(
+		identifier:str,
+		debug:bool=False,
+		test:bool=False
+	)->bool:
+
+	# Modifies the firmware bootsequence field
+	# This is the equivalent of setting the BootNext EFI variable
+
+	target=util_filter_identifier(
+		identifier,
+		whitelist=[_ID_BOOTMGR],
+		return_data=True
+	)
+	if target is None:
+		return False
+
+	result_subproc=util_subproc(
+		[
+			"bcdedit",
+				"/set",
+				_ID_FWBOOTMGR,
+				"bootsequence",
+				target,
+		],
+		verbose=debug,
+		test=test
+	)
+
+	return (result_subproc[0]==0)
+
 ###############################################################################
 
 # Small test
@@ -739,7 +770,7 @@ if __name__=="__main__":
 
 	this_one=None
 
-	entries=cmd_bcdedit_enum_firmware(
+	entries=cmd_entry_enum(
 		identifier=this_one,
 		debug=True
 	)
@@ -751,6 +782,6 @@ if __name__=="__main__":
 
 	print("} ENTRIES FOUND\n")
 
-	displayorder=cmd_bcdedit_fwdo_list(detailed=True,debug=True)
+	displayorder=cmd_fw_do_list(detailed=True,debug=True)
 
 	print("\nDISPLAYORDER:",displayorder)
