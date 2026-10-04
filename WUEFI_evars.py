@@ -10,11 +10,13 @@ from ctypes import (
 
 import struct
 
-from typing import Callable,Optional,Union
+from typing import Callable,Mapping,Optional,Union
 
 from WUEFI_serde import (
 	parse_efi_BootOrder,
-	parse_efi_elo_filepathlist,
+
+	parse_efi_EFI_LOAD_OPTION,
+		# parse_efi_elo_filepathlist,
 
 	build_efi_BootOrder,
 	build_efi_elo_Description
@@ -22,8 +24,7 @@ from WUEFI_serde import (
 
 from WUEFI_symbols import (
 
-	_ENC_UTF16LE,
-	_NULLTERM,
+	# _NULLTERM,
 
 	_ELO_ATTR_ACTIVE,
 	_ELO_ATTR_CATEGORY_BOOT,
@@ -165,47 +166,55 @@ def write_efi_variable(
 
 def get_evar_BootCurrent(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
+		return_content:bool=False,
 		raw_only:bool=False,
 		debug:bool=False
-	)->Union[bytes,Optional[str]]:
+	)->Union[bytes,Mapping,Optional[str]]:
 
-	# Get the value inside the "BootCUrrent" EFI variable
+	# Get the value inside the "BootCurrent" EFI variable
 
 	data:Optional[bytes]=read_efi_variable(
 		fun_GetFirmwareEnvironmentVariableW,
 		"BootCurrent",
 		debug=debug
 	)
+
+	if not isinstance(data,(bytes,bytearray)):
+		if return_content:
+			return {}
+		return None
+
+	if return_content:
+
+		data_unpkg=struct.unpack("<H",data)
+		boot_entry=f"Boot{data_unpkg[0]:04X}"
+
+		evar_raw=read_efi_variable(
+			fun_GetFirmwareEnvironmentVariableW,
+			boot_entry
+		)
+
+		if raw_only:
+			return evar_raw
+
+		return parse_efi_EFI_LOAD_OPTION(
+			evar_raw,
+			name=boot_entry
+		)
+
+	# BY DEFAULT WE DO NOT REUTRN THE CONTENT, ONLY THE NAME
+
 	if raw_only:
 		return data
 
-	if not isinstance(data,(bytes,bytearray)):
-		return None
+	data_unpkg=struct.unpack("<H",data)
+	boot_entry=f"Boot{data_unpkg[0]:04X}"
 
-	data_size=len(data)
-
-	if not data_size==2:
-		err_msg=(
-			"The value for BootNext must"
-			" contain exactly 2 bytes,"
-			f" but recieved {data_size}"
-		)
-		if debug:
-			raise Exception(err_msg)
-
-		print(err_msg)
-		return None
-
-	data_unpkg=struct.unpack(
-		"<H",data
-	)
-
-	boot_entry=data_unpkg[0]
-
-	return f"Boot{boot_entry:04X}"
+	return boot_entry
 
 def get_evar_BootNext(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
+		return_content:bool=False,
 		raw_only:bool=False,
 		debug:bool=False
 	)->Optional[str]:
@@ -217,34 +226,38 @@ def get_evar_BootNext(
 		"BootNext",
 		debug=debug
 	)
-	if data is None:
+	if not isinstance(data,(bytes,bytearray)):
+		if return_content:
+			return {}
 		return None
+
+	if return_content:
+
+		data_unpkg=struct.unpack("<H",data)
+		boot_entry=f"Boot{data_unpkg[0]:04X}"
+
+		evar_raw=read_efi_variable(
+			fun_GetFirmwareEnvironmentVariableW,
+			boot_entry
+		)
+
+		if raw_only:
+			return evar_raw
+
+		return parse_efi_EFI_LOAD_OPTION(
+			evar_raw,
+			name=boot_entry
+		)
+
+	# BY DEFAULT WE DO NOT REUTRN THE CONTENT, ONLY THE NAME
+
 	if raw_only:
 		return data
 
-	data_size=len(data)
+	data_unpkg=struct.unpack("<H",data)
+	boot_entry=f"Boot{data_unpkg[0]:04X}"
 
-	if not data_size==2:
-		err_msg=(
-			"The value for BootNext must"
-			" contain exactly 2 bytes,"
-			f" but recieved {data_size}"
-		)
-		if not debug:
-			raise Exception(err_msg)
-
-		print(err_msg)
-		return None
-
-	data_unpkg=struct.unpack(
-		"<H",data
-	)
-	# if debug:
-	# 	print(data_unpkg)
-
-	boot_entry=data_unpkg[0]
-
-	return f"Boot{boot_entry:04X}"
+	return boot_entry
 
 def set_evar_BootNext(
 		fun_SetFirmwareEnvironmentVariableExW:Callable,
@@ -358,116 +371,17 @@ def get_evar_BootNNNN(
 			data_bytes
 		)
 
-	# Parsing according to the EFI_LOAD_OPTION specification
-
-	offset=0
-
-	# Field 1
-	# Attributes
-	# UINT32
-	# Offset 0x00
-	# Size 4
-
-	readmax=4
-	data_attributes=data_bytes[offset:offset+readmax]
-	if debug:
-		print(
-			"ATTRIBUTES:",
-			data_attributes
-		)
-		print(
-			"ATTRIBUTES (DECODED):",
-			int.from_bytes(
-				data_attributes,
-				byteorder="little"
-			)
-		)
-
-	offset=offset+readmax
-
-	# Field 2
-	# FilePathListLength
-	# UINT16
-	# Offset 0x04
-	# Size 2
-
-	readmax=2
-	data_fpathlen=data_bytes[offset:offset+readmax]
-	data_fpathlen_ok=int.from_bytes(
-		data_fpathlen,
-		byteorder="little"
-	)
-	if debug:
-		print("FILEPATH LENGTH:",data_fpathlen)
-		print("FILEPATH LENGTH (OK):",data_fpathlen_ok)
-
-	offset=offset+readmax
-
-	# Field 3
-	# Description
-	# UTF-16 string, Null term.
-	# Offset 0x06
-	# Size any
-
-	readmax=data_bytes[offset:].find(_NULLTERM)
-	if readmax==-1:
-		return {}
-
-	if not readmax%2==0:
-		readmax=readmax+1
-
-	data_description=data_bytes[offset:offset+readmax]
-	data_description_ok=data_description.decode("utf-16-le")
-
-	if debug:
-		print("DESCRIPTION:",data_description)
-		print("DESCRIPTION (OK):",data_description_ok)
-
-	offset=offset+readmax+len(_NULLTERM)
-
-	# Field 4
-	# FilePathList
-	# Complicated shit
-	# Offset depends on where does Desccription ends
-	# Size is given by FilePathListLength
-
-	data_fpathlist=data_bytes[offset:offset+data_fpathlen_ok]
-
-	data_fpathlist_ok=parse_efi_elo_filepathlist(
-		data_fpathlist,
+	data_ok=parse_efi_EFI_LOAD_OPTION(
+		data_bytes,
+		name=boot_entry,
 		debug=debug
 	)
-
-	data_ok={
-		"entry_name":boot_entry,
-		"raw_attributes":data_attributes,
-		"description":data_description_ok,
-		"filepath_list":data_fpathlist_ok,
-		"filepath_list_start":offset,
-		"filepath_list_end":offset+data_fpathlen_ok
-	}
-
-	offset=offset+data_fpathlen_ok
-
-	if not offset<data_bytes_size:
-
-		if debug:
-			print("OptionalData not found")
-
-		return data_ok
-
-	# Field 5
-	# OptionalData
-	# This is the tail of the Boot#### entry
-
-	data_optional=data_bytes[offset:]
-
-	data_ok.update({"optdata":data_optional})
 
 	return data_ok
 
 def set_evar_BootNNNN(
-		# If None instead of Callback, it will return the payload and not write it 
+
+		# If None instead of Callback, it will return the payload and not write it
 		fun_SetFirmwareEnvironmentVariableExW:Optional[Callable],
 		# Boot####
 			boot_entry:str,
@@ -485,18 +399,11 @@ def set_evar_BootNNNN(
 		debug:bool=False
 	)->Union[bool,Optional[bytes]]:
 
-	# Creates a bootable EFI Boot#### variable
-	# The FilePathList coming out of this thing is composed of a HardDrive node
-	# and a FilePath node
-
-	# NOTE:
-	# The FilePathList must be constructed first using the hard drive
-	# and filepath nodes
+	#
 
 	bytes_fpathlst=b""
 	for nnn in nodes:
 		bytes_fpathlst=bytes_fpathlst+nnn
-
 	bytes_fpathlst=bytes_fpathlst+_ELO_NODE_END
 
 	fpathlst_len=len(bytes_fpathlst)
@@ -663,7 +570,7 @@ if __name__=="__main__":
 		if evar=="BootCurrent":
 			print(
 				"BootCurrent:",
-				get_evar_BootCurrent(GetFwEnVarW)
+				get_evar_BootCurrent(GetFwEnVarW,return_content=True)
 			)
 			sys_exit(0)
 

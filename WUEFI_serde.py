@@ -988,6 +988,128 @@ def parse_efi_elo_filepathlist(
 
 	return nodes
 
+def parse_efi_EFI_LOAD_OPTION(
+		data:bytes,
+		data_offset:int=0,
+		name:Optional[str]=None,
+		skip_fixed_size_nodes:bool=False,
+		debug:bool=False
+	)->dict:
+
+	# Parsing according to the EFI_LOAD_OPTION specification
+
+	data_bytes_size=len(data)
+
+	offset=0
+
+	# Field 1
+	# Attributes
+	# UINT32
+	# Offset 0x00
+	# Size 4
+
+	readmax=4
+	data_attributes=data[offset:offset+readmax]
+	if debug:
+		print(
+			"ATTRIBUTES:",
+			data_attributes
+		)
+		print(
+			"ATTRIBUTES (DECODED):",
+			int.from_bytes(
+				data_attributes,
+				byteorder="little"
+			)
+		)
+
+	offset=offset+readmax
+
+	# Field 2
+	# FilePathListLength
+	# UINT16
+	# Offset 0x04
+	# Size 2
+
+	readmax=2
+	data_fpathlen=data[offset:offset+readmax]
+	data_fpathlen_ok=int.from_bytes(
+		data_fpathlen,
+		byteorder="little"
+	)
+	if debug:
+		print("FILEPATH LENGTH:",data_fpathlen)
+		print("FILEPATH LENGTH (OK):",data_fpathlen_ok)
+
+	offset=offset+readmax
+
+	# Field 3
+	# Description
+	# UTF-16 string, Null term.
+	# Offset 0x06
+	# Size any
+
+	readmax=data[offset:].find(_NULLTERM)
+	if readmax==-1:
+		return {}
+
+	if not readmax%2==0:
+		readmax=readmax+1
+
+	data_description=data[offset:offset+readmax]
+	data_description_ok=data_description.decode("utf-16-le")
+
+	if debug:
+		print("DESCRIPTION:",data_description)
+		print("DESCRIPTION (OK):",data_description_ok)
+
+	offset=offset+readmax+len(_NULLTERM)
+
+	# Field 4
+	# FilePathList
+	# Complicated shit
+	# Offset depends on where does Desccription ends
+	# Size is given by FilePathListLength
+
+	data_fpathlist=data[offset:offset+data_fpathlen_ok]
+
+	data_fpathlist_ok=parse_efi_elo_filepathlist(
+		data_fpathlist,
+		debug=debug
+	)
+
+	data_ok={}
+
+	if isinstance(name,str):
+		data_ok.update({"entry_name":name})
+
+	data_ok.update({
+		"raw_attributes":data_attributes,
+		"description":data_description_ok,
+		"filepath_list":data_fpathlist_ok,
+		"filepath_list_start":offset,
+		"filepath_list_end":offset+data_fpathlen_ok
+	})
+
+	offset=offset+data_fpathlen_ok
+
+	if not offset<data_bytes_size:
+
+		if debug:
+			print("OptionalData not found")
+
+		return data_ok
+
+	# Field 5
+	# OptionalData
+	# This is the tail of the Boot#### entry
+
+	data_optional=data[offset:]
+
+	data_ok.update({"optdata":data_optional})
+
+	return data_ok
+
 ###############################################################################
 
 # Serializers
@@ -1406,3 +1528,5 @@ def build_efi_elo_fpl_node_Media_FilePath(
 		return True
 
 	return payload
+
+# TODO: Add more nodes

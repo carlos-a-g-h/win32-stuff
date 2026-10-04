@@ -20,7 +20,14 @@ from WUEFI_evars import (
 	get_evar_BootNNNN
 )
 
-from WUEFI_symbols import _ELO_NODE_MEDIA_FILEPATH
+from WUEFI_serde import (
+
+	parse_efi_EFI_LOAD_OPTION,
+	build_efi_elo_Description,
+	build_efi_elo_fpl_node_Media_FilePath
+)
+
+# from WUEFI_symbols import (_ELO_NODE_MEDIA_FILEPATH,_ELO_NODE_END)
 
 def main_CreateFwBootEntry(
 
@@ -155,20 +162,22 @@ def main_CreateFwBootEntry(
 
 def main_LocateFwBootEntry(
 
-		# Locates a firmware boot entry using hints such as description, filepath,
-		# and metadata (EFI_LOAD_OPTION's OptionalData)
+		# Locates a firmware boot entry using specific data
 
 		# NOTE:
-		# You must provide at least ONE hint and the result must match all provided
-		# hints
+		# You must provide at least ONE hint and the result must match all the
+		# provided hints
 		# It can only return one result using the Boot#### naming scheme
 
 		# (Windows API) GetFirmwareEnvironmentVariableW
 			fun_GetFwEnVarW:Callable,
 
-		hint_description:Optional[str]=None,
-		hint_filepath:Optional[str]=None,
-		hint_metadata:Optional[bytes]=None,
+		# Description
+			hint_description:Optional[str]=None,
+		# FPL Media Filepath Node
+			hint_filepath:Optional[str]=None,
+		# OptionalData
+			hint_metadata:Optional[bytes]=None,
 
 		return_detailed:bool=False,
 
@@ -183,6 +192,7 @@ def main_LocateFwBootEntry(
 			ph_filepath or
 			ph_metadata
 		):
+		# print("Nothing to do?")
 		if return_detailed:
 			return {}
 		return None
@@ -190,11 +200,11 @@ def main_LocateFwBootEntry(
 	matches_found=0
 	matches_req=0
 	if ph_description:
-		matches_req=matches_req
+		matches_req=matches_req+1
 	if ph_filepath:
-		matches_req=matches_req
+		matches_req=matches_req+1
 	if ph_metadata:
-		matches_req=matches_req
+		matches_req=matches_req+1
 
 	boot_order=get_evar_BootOrder(fun_GetFwEnVarW)
 	if boot_order is None:
@@ -210,49 +220,124 @@ def main_LocateFwBootEntry(
 			(not ph_description) and
 			(not ph_filepath)
 		):
-		pass
 
-	for name in boot_order:
-		matches_found=0
-		if return_detailed:
+		metadata_len=len(hint_metadata)
+
+		for name in boot_order:
+
 			found.append(
-				get_evar_BootNNNN(
-					fun_GetFwEnVarW,
-					name
+				(
+					name,
+					get_evar_BootNNNN(
+						fun_GetFwEnVarW,
+						name,
+						raw_only=True
+					)
 				)
 			)
-			if len(found[-1])==0:
-				found.pop(-1)
-				continue
-			if ph_description:
-				if found[-1].get("description")==ph_description:
-					matches_found=matches_found+1
-			if ph_metadata:
-				if found[-1].get("optdata")==ph_metadata:
-					matches_found=matches_found+1
-			if ph_filepath:
-				if not isinstance(
-						found[-1].get("filepath_list"),
-						list
-					):
-					found.pop(-1)
-					continue
-				for node in found[-1]["filepath_list"]:
-					if not node.get("header")==_ELO_NODE_MEDIA_FILEPATH:
-						continue
-					if node.get("filepath")==ph_filepath:
-						matches_found=matches_found+1
-	
-			if not matches_found==matches_req:
-				found.pop(-1)
-				continue
 
-			if matches_found==matches_req:
+			tmp_elosize=len(found[-1][1])
+			optdata_offset=tmp_elosize-metadata_len
+
+			if found[-1][1][optdata_offset:-1]==hint_metadata:
+				# print("Match found:",name)
 				break
 
-		# return_detailed == False
+			found.pop(-1)
+			continue
 
+		if not len(found)==1:
+			# print(
+			# 	"Found",
+			# 	len(found),
+			# 	"instead of ONE"
+			# )
+			if return_detailed:
+				return {}
+			return None
 
+		if return_detailed:
+
+			name=found[-1][0]
+
+			return parse_efi_EFI_LOAD_OPTION(
+				found[-1][1],
+				name=name
+			)
+
+		return found[-1][0]
+
+	# One or more hints provided
+
+	desc_as_bytes=b""
+	if ph_description:
+		desc_as_bytes=build_efi_elo_Description(hint_description)
+
+	node_media_fpath=b""
+	if ph_filepath:
+		node_media_fpath=build_efi_elo_fpl_node_Media_FilePath(hint_filepath)
+
+	for name in boot_order:
+
+		matches_found=0
+		found.append(
+			(
+				name,
+				get_evar_BootNNNN(
+					fun_GetFwEnVarW,
+					name,raw_only=True
+				)
+			)
+		)
+
+		print(name,found[-1])
+
+		if found[-1][1] is None:
+			found.pop(-1)
+			continue
+
+		if ph_description:
+			if found[-1][1].find(desc_as_bytes)==-1:
+				found.pop(-1)
+				continue
+			matches_found=matches_found+1
+
+		if ph_filepath:
+			if found[-1][1].find(node_media_fpath)==-1:
+				found.pop(-1)
+				continue
+			matches_found=matches_found+1
+
+		if ph_metadata:
+			if found[-1][1].find(hint_metadata)==-1:
+				found.pop(-1)
+				continue
+			matches_found=matches_found+1
+
+		if not matches_found==matches_req:
+			found.pop(-1)
+			continue
+
+	if not len(found)==1:
+		print(
+			"Found",
+			len(found),
+			"instead of ONE"
+		)
+		return None
+
+	entry_name=found[-1][0]
+
+	if return_detailed:
+
+		entry_data=found[-1][1]
+
+		return parse_efi_EFI_LOAD_OPTION(
+			entry_data,
+			entry_name
+		)
+
+	return entry_name
 
 ###############################################################################
 
@@ -269,33 +354,43 @@ if __name__=="__main__":
 		import_SetFwEnvVarExW
 	)
 
+	# Make sure the script is being ran as admin
+
 	if not query_proc_priv_info():
 		print("Must run as admin")
 		exit(1)
 
+	# Gain aditional privileges
+
 	env_gain_extra_priv()
+
+	# Import some functions from WinDLL
 
 	fun_EFIVarGetter=import_GetFwEnVarW()
 	fun_EFIVarSetter=import_SetFwEnvVarExW()
 
-	the_path="\\EFI\\Boot\\grub2.bootx64.efi"
 	the_desc="GRUB2 EFI (WUEFI)"
 
-	entry_id=main_CreateFwBootEntry(
-
-		fun_EFIVarGetter,
-		fun_EFIVarSetter,
-
-		the_path,
-		the_desc,
-
-		opt_BootNext=False,
-		opt_BootOrder_addfirst=False,
-
-		debug=True
+	print(
+		"LOCATED:",
+		main_LocateFwBootEntry(
+			fun_EFIVarGetter,
+			hint_description=the_desc
+		)
 	)
-	if entry_id is None:
-		exit(1)
 
-	print("NEW ENTRY:",entry_id)
+	# the_path="\\EFI\\Boot\\grub2.bootx64.efi"
+	# the_desc="GRUB2 EFI (WUEFI)"
+	# entry_id=main_CreateFwBootEntry(
+	# 	fun_EFIVarGetter,
+	# 	fun_EFIVarSetter,
+	# 	the_path,
+	# 	the_desc,
+	# 	opt_BootNext=False,
+	# 	opt_BootOrder_addfirst=False,
+	# 	debug=True
+	# )
+	# if entry_id is None:
+	# 	exit(1)
+	# print("NEW ENTRY:",entry_id)
 
