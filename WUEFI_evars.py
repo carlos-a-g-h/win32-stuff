@@ -14,9 +14,10 @@ from typing import Callable,Optional,Union
 
 from WUEFI_serde import (
 	parse_efi_BootOrder,
-	parse_efi_filepathlist,
+	parse_efi_elo_filepathlist,
 
 	build_efi_BootOrder,
+	build_efi_elo_Description
 )
 
 from WUEFI_symbols import (
@@ -33,6 +34,8 @@ from WUEFI_symbols import (
 	_EFI_VAR_BOOTSERVICE_ACCESS,
 	_EFI_VAR_RUNTIME_ACCESS
 )
+
+from WUEFI_utils import is_hex as util_is_hex
 
 ###############################################################################
 
@@ -276,7 +279,7 @@ def get_evar_BootOrder(
 		as_list:bool=False,
 		raw_only:bool=False,
 		debug:bool=False
-	)->Optional[Union[tuple,list]]:
+	)->Optional[Union[tuple,list],bytes]:
 
 	# Get the value inside the "BootOrder" EFI Variable
 
@@ -286,6 +289,8 @@ def get_evar_BootOrder(
 		debug=debug
 	)
 	if data is None:
+		if as_list:
+			return []
 		return None
 
 	if raw_only:
@@ -317,16 +322,19 @@ def set_evar_BootOrder(
 def get_evar_BootNNNN(
 		fun_GetFirmwareEnvironmentVariableW,
 		boot_entry:str,
-		debug:bool=False,
 		raw_only:bool=False,
+		debug:bool=False,
 	)->dict:
 
-	# Gets the contents of a specific boot entry
+	# Gets the contents of a specific boot entry (EFI LOAD OPTION)
 
 	if not len(boot_entry)==8:
 		return {}
 
-	if not boot_entry.startswith("Boot"):
+	if not boot_entry[0:4]=="Boot":
+		return {}
+
+	if not util_is_hex(boot_entry[4:]):
 		return {}
 
 	data_bytes=read_efi_variable(
@@ -425,12 +433,13 @@ def get_evar_BootNNNN(
 
 	data_fpathlist=data_bytes[offset:offset+data_fpathlen_ok]
 
-	data_fpathlist_ok=parse_efi_filepathlist(
+	data_fpathlist_ok=parse_efi_elo_filepathlist(
 		data_fpathlist,
 		debug=debug
 	)
 
 	data_ok={
+		"entry_name":boot_entry,
 		"raw_attributes":data_attributes,
 		"description":data_description_ok,
 		"filepath_list":data_fpathlist_ok,
@@ -458,6 +467,7 @@ def get_evar_BootNNNN(
 	return data_ok
 
 def set_evar_BootNNNN(
+		# If None instead of Callback, it will return the payload and not write it 
 		fun_SetFirmwareEnvironmentVariableExW:Optional[Callable],
 		# Boot####
 			boot_entry:str,
@@ -513,7 +523,10 @@ def set_evar_BootNNNN(
 	# Offset 0x04
 	# Size 2
 
-	bytes_fpathlst_len=fpathlst_len.to_bytes(2,byteorder="little")
+	bytes_fpathlst_len=fpathlst_len.to_bytes(
+		length=2,
+		byteorder="little"
+	)
 
 	if debug:
 		assert len(bytes_fpathlst_len)==2
@@ -526,9 +539,7 @@ def set_evar_BootNNNN(
 	# Offset 0x06
 	# Size any
 
-	bytes_description=description.encode(_ENC_UTF16LE)+_NULLTERM
-
-	payload=payload+bytes_description
+	payload=payload+build_efi_elo_Description(description)
 
 	# Field 4
 	# FilePathList

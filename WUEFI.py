@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from typing import Callable,Optional
+from typing import Callable,Mapping,Optional,Union
 
 from WUEFI_bcdedit import (
 
@@ -20,14 +20,19 @@ from WUEFI_evars import (
 	get_evar_BootNNNN
 )
 
-def main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
+from WUEFI_symbols import _ELO_NODE_MEDIA_FILEPATH
 
-		# (Win32API) GetFirmwareEnvironmentVariableW
+def main_CreateFwBootEntry(
+
+		# Creates a firmware boot entry using a combination of BCDEDIT commands and
+		# Windows API functions related to EFI variables
+
+		# (Windows API) GetFirmwareEnvironmentVariableW
 			fun_GetFwEnVarW:Callable,
-		# (Win32API) SetFirmwareEnvironmentVariableExW
+		# (Windows API) SetFirmwareEnvironmentVariableExW
 			fun_SetFwEnvVarExW:Callable,
 
-		path_efi:str,
+		filepath:str,
 		description:str,
 		metadata:Optional[bytes]=None,
 
@@ -61,7 +66,7 @@ def main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
 
 	if not bcdedit_set(
 			entry_guid,
-			"path",path_efi,
+			"path",filepath,
 			debug=debug
 		):
 		print("error_3")
@@ -148,6 +153,107 @@ def main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
 
 	return (entry_name,entry_guid)
 
+def main_LocateFwBootEntry(
+
+		# Locates a firmware boot entry using hints such as description, filepath,
+		# and metadata (EFI_LOAD_OPTION's OptionalData)
+
+		# NOTE:
+		# You must provide at least ONE hint and the result must match all provided
+		# hints
+		# It can only return one result using the Boot#### naming scheme
+
+		# (Windows API) GetFirmwareEnvironmentVariableW
+			fun_GetFwEnVarW:Callable,
+
+		hint_description:Optional[str]=None,
+		hint_filepath:Optional[str]=None,
+		hint_metadata:Optional[bytes]=None,
+
+		return_detailed:bool=False,
+
+	)->Union[Optional[str],Mapping]:
+
+	ph_description=(isinstance(hint_description,str))
+	ph_filepath=(isinstance(hint_filepath,str))
+	ph_metadata=(isinstance(hint_metadata,bytes))
+
+	if not (
+			ph_description or
+			ph_filepath or
+			ph_metadata
+		):
+		if return_detailed:
+			return {}
+		return None
+
+	matches_found=0
+	matches_req=0
+	if ph_description:
+		matches_req=matches_req
+	if ph_filepath:
+		matches_req=matches_req
+	if ph_metadata:
+		matches_req=matches_req
+
+	boot_order=get_evar_BootOrder(fun_GetFwEnVarW)
+	if boot_order is None:
+		if return_detailed:
+			return {}
+		return None
+
+	# Provided ONLY metadata as hint
+
+	found=[]
+	if (
+			ph_metadata and
+			(not ph_description) and
+			(not ph_filepath)
+		):
+		pass
+
+	for name in boot_order:
+		matches_found=0
+		if return_detailed:
+			found.append(
+				get_evar_BootNNNN(
+					fun_GetFwEnVarW,
+					name
+				)
+			)
+			if len(found[-1])==0:
+				found.pop(-1)
+				continue
+			if ph_description:
+				if found[-1].get("description")==ph_description:
+					matches_found=matches_found+1
+			if ph_metadata:
+				if found[-1].get("optdata")==ph_metadata:
+					matches_found=matches_found+1
+			if ph_filepath:
+				if not isinstance(
+						found[-1].get("filepath_list"),
+						list
+					):
+					found.pop(-1)
+					continue
+				for node in found[-1]["filepath_list"]:
+					if not node.get("header")==_ELO_NODE_MEDIA_FILEPATH:
+						continue
+					if node.get("filepath")==ph_filepath:
+						matches_found=matches_found+1
+	
+			if not matches_found==matches_req:
+				found.pop(-1)
+				continue
+
+			if matches_found==matches_req:
+				break
+
+		# return_detailed == False
+
+
+
 ###############################################################################
 
 # Main function (tests only)
@@ -175,7 +281,7 @@ if __name__=="__main__":
 	the_path="\\EFI\\Boot\\grub2.bootx64.efi"
 	the_desc="GRUB2 EFI (WUEFI)"
 
-	entry_id=main_Create_boot_entry_using_BCDEDIT_and_WinAPI_functions(
+	entry_id=main_CreateFwBootEntry(
 
 		fun_EFIVarGetter,
 		fun_EFIVarSetter,

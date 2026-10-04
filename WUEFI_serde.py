@@ -75,13 +75,15 @@ def parse_efi_BootOrder(
 
 	return tuple(boot_order)
 
-def parse_efi_filepathlist_node_head(
+def parse_efi_elo_fpl_node_head(
 		data:bytes,
 		data_offset:int=0,
 		req_type=-1,
 		req_subtype=-1,
 		req_nodesize=-1,
 	)->Optional[tuple]:
+
+	# EFI LOAD OPTION FilePathList Node Header
 
 	# Returns: ( Type , SubType, Node Size )
 
@@ -183,12 +185,14 @@ def parse_efi_filepathlist_node_head(
 		x_nodesize
 	)
 
-def parse_efi_filepathlist_node_Messaging_NVMeNamespace(
+def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
 		verify_build:bool=False
 	)->Union[bool,dict]:
+
+	# EFI LOAD OPTION FilePathList (Messageing NVMe Namespace Node)
 
 	# NOTE:
 
@@ -207,7 +211,7 @@ def parse_efi_filepathlist_node_Messaging_NVMeNamespace(
 
 	if not unsafe:
 
-		header_info=parse_efi_filepathlist_node_head(
+		header_info=parse_efi_elo_fpl_node_head(
 			data,data_offset=offset,
 			req_type=3,
 			req_subtype=17,
@@ -274,12 +278,14 @@ def parse_efi_filepathlist_node_Messaging_NVMeNamespace(
 		"payload_end":data_offset+progress
 	}
 
-def parse_efi_filepathlist_node_ACPI_HID(
+def parse_efi_elo_fpl_node_ACPI_HID(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
 		verify_build:bool=False
 	)->Union[bool,dict]:
+
+	# EFI LOAD OPTION FilePathList (ACPI HID Node)
 
 	# NOTE:
 
@@ -298,7 +304,7 @@ def parse_efi_filepathlist_node_ACPI_HID(
 
 	if not unsafe:
 
-		header_info=parse_efi_filepathlist_node_head(
+		header_info=parse_efi_elo_fpl_node_head(
 			data,data_offset=offset,
 			req_type=2,
 			req_subtype=1,
@@ -380,17 +386,18 @@ def parse_efi_filepathlist_node_ACPI_HID(
 		"payload_end":data_offset+progress
 	}
 
-def parse_efi_filepathlist_node_Hardware_PCI(
+def parse_efi_elo_fpl_node_Hardware_PCI(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
 		verify_build:bool=False
 	)->Union[bool,dict]:
 
-	# PCI Device Path Node
-	# Fixed size of 6
+	# EFI LOAD OPTION FilePathList (Hardware PCI Node)
 
 	# NOTE:
+	# Fixed size of 6
+
 
 	x_nodesize=-1
 	offset=data_offset
@@ -407,7 +414,7 @@ def parse_efi_filepathlist_node_Hardware_PCI(
 
 	if not unsafe:
 
-		header_info=parse_efi_filepathlist_node_head(
+		header_info=parse_efi_elo_fpl_node_head(
 			data,
 			data_offset=offset,
 			req_type=1,
@@ -487,17 +494,17 @@ def parse_efi_filepathlist_node_Hardware_PCI(
 		"payload_end":data_offset+progress
 	}
 
-def parse_efi_filepathlist_node_Media_HardDrive(
+def parse_efi_elo_fpl_node_Media_HardDrive(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
 		verify_build:bool=False
 	)->Union[bool,dict]:
 
-	# Hard Drive Node
-	# Fixed size of 42
+	# EFI LOAD OPTION File Path List (Media Hard Drive Node)
 
 	# NOTE:
+	# Fixed size of 42
 
 	# TYPE               SUBTYPE             END OF HEADER
 	# Media Device Path  Hard drive subtype  Node Length
@@ -514,7 +521,7 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 
 	if not unsafe:
 
-		header_info=parse_efi_filepathlist_node_head(
+		header_info=parse_efi_elo_fpl_node_head(
 			data,
 			data_offset=offset,
 			req_type=4,
@@ -678,17 +685,16 @@ def parse_efi_filepathlist_node_Media_HardDrive(
 		"payload_end":data_offset+progress
 	}
 
-def parse_efi_filepathlist_node_Media_FilePath(
+def parse_efi_elo_fpl_node_Media_FilePath(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
 		verify_build:bool=False,
 	)->Union[bool,dict]:
 
-	# Filepath Node
+	# EFI LOAD OPTION File Path List (Media Filepath Node)
 
 	# NOTE:
-
 	# TYPE               SUBTYPE           END OF HEADER
 	# Media Device Path  Filepath subtype  Node Length
 	# UINT8              UINT8             UINT16 LE
@@ -701,7 +707,7 @@ def parse_efi_filepathlist_node_Media_FilePath(
 	x_nodesize=-1
 	if not unsafe:
 
-		header_info=parse_efi_filepathlist_node_head(
+		header_info=parse_efi_elo_fpl_node_head(
 			data,
 			data_offset=offset,
 			req_type=4,
@@ -774,7 +780,7 @@ def parse_efi_filepathlist_node_Media_FilePath(
 		"payload_end":data_offset+progress
 	}
 
-def parse_efi_filepathlist(
+def parse_efi_elo_filepathlist(
 		data:bytes,
 		data_offset:int=0,
 		debug:bool=False,
@@ -809,16 +815,16 @@ def parse_efi_filepathlist(
 	# Known parsers for fixed size nodes
 
 	known_parsers_fsn={
-		_ELO_NODE_ACPI_HID:parse_efi_filepathlist_node_ACPI_HID,
-		_ELO_NODE_HARDWARE_PCI:parse_efi_filepathlist_node_Hardware_PCI,
-		_ELO_NODE_MESSAGING_NVMENAMESPACE:parse_efi_filepathlist_node_Messaging_NVMeNamespace,
-		_ELO_NODE_MEDIA_HARDDRIVE:parse_efi_filepathlist_node_Media_HardDrive,
+		_ELO_NODE_ACPI_HID:parse_efi_elo_fpl_node_ACPI_HID,
+		_ELO_NODE_HARDWARE_PCI:parse_efi_elo_fpl_node_Hardware_PCI,
+		_ELO_NODE_MESSAGING_NVMENAMESPACE:parse_efi_elo_fpl_node_Messaging_NVMeNamespace,
+		_ELO_NODE_MEDIA_HARDDRIVE:parse_efi_elo_fpl_node_Media_HardDrive,
 	}
 
 	# Known parsers for variable size nodes
 
 	known_parsers_vsn={
-		_ELO_NODE_MEDIA_FILEPATH:parse_efi_filepathlist_node_Media_FilePath
+		_ELO_NODE_MEDIA_FILEPATH:parse_efi_elo_fpl_node_Media_FilePath
 	}
 
 	while True:
@@ -1102,15 +1108,26 @@ def build_spec_EISAID_to_HID(
 
 	return result[0]
 
-def build_efi_filepathlist_node_ACPI_HID(
+def build_efi_elo_Description(data:str):
+
+	# Builds the description blob for the EFI LOAD OPTION
+
+	# NOTE:
+	# The Description field is located after FilePathListLength and before
+	# FilePathList
+
+	return data.encode(_ENC_UTF16LE)+_NULLTERM
+
+def build_efi_elo_fpl_node_ACPI_HID(
 		eisa_id:str,uid:int,
 		verify_build:bool=False
 	)->Union[Optional[bytes],bool]:
 
-	# Builds an ACPI HID node for a FilePathList
-	# Usually it's just PNP0A03
+	# Builds an ACPI HID node for a FilePathList (EFI_LOAD_OPTION)
 
 	# NOTE:
+	# Usually the most common EISA value is just PNP0A03, but I can't put that
+	# in here as a default value, I'm not an expert on UEFI (yet)
 
 	# TYPE              SUBTYPE   END OF HEADER
 	# ACPI Device Path  Hardware  Node Length
@@ -1159,7 +1176,7 @@ def build_efi_filepathlist_node_ACPI_HID(
 		return True
 	return payload
 
-def build_efi_filepathlist_node_Hardware_PCI(
+def build_efi_elo_fpl_node_Hardware_PCI(
 		function:int,device:int,
 		verify_build:bool=False
 	)->Union[Optional[bytes],bool]:
@@ -1215,7 +1232,7 @@ def build_efi_filepathlist_node_Hardware_PCI(
 
 	return payload
 
-def build_efi_filepathlist_node_Media_HardDrive(
+def build_efi_elo_fpl_node_Media_HardDrive(
 		part_num:int,
 		part_startlba:int,
 		part_size:int,
@@ -1225,11 +1242,14 @@ def build_efi_filepathlist_node_Media_HardDrive(
 		verify_build:bool=False
 	)->Optional[bytes]:
 
-	# Builds a FilePathList Media Hard Drive node
-	# The default values for MBRType and Signature Type are for GUID Partition
-	# table disks, which is what SHOULD be expected
+	# Builds a FilePathList Media Hard Drive node (EFI_LOAD_OPTION)
 
 	# NOTE:
+
+	# The default values for MBRType and Signature Type are for GUID Partition
+	# table disks, which is what SHOULD be expected for any hardrive hosting an
+	# ESP with the EFI file
+
 	# The easiest way to get the necessary arguments for this function is to get
 	# them from an existing Hard drive node of an existing Bootentry, like, for
 	# example, the current boot entry
@@ -1344,12 +1364,12 @@ def build_efi_filepathlist_node_Media_HardDrive(
 
 	return payload
 
-def build_efi_filepathlist_node_Media_FilePath(
+def build_efi_elo_fpl_node_Media_FilePath(
 		filepath:str,
 		verify_build:bool=False
 	)->Optional[bytes]:
 
-	# Builds a FilePathList Filepath node
+	# Builds Filepath node for a FilePathList(EFI LOAD OPTION)
 
 	filepath_ok=filepath.encode(_ENC_UTF16LE)+_NULLTERM
 
