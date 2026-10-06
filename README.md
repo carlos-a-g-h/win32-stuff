@@ -16,17 +16,15 @@ What can you do with this?
 
 - You can gain access to higher privilege beyond Administrator (read the source code for more details)
 
-## WUEFI.py
+## WUEFI
 
-A python module that lets you modify the EFI/UEFI firmware boot options. It works by using the Wndows API through ctypes
+Lets you modify the EFI/UEFI firmware boot options. It works by using the Wndows API through ctypes and bcdedit
 
-Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI.py)
+Main module with ready-to-use functions [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI.py)
 
-Example/tests script about boot entries [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_WUEFI_tests_boot_entries.py)
+EFI variables specific module [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_evars.py)
 
-Example/tests script about boot order [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_WUEFI_tests_boot_order.py)
-
-Example/tests script that creates a new boot entry [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/_WUEFI_tests_UNSAFE.py)
+BCDEDIT specific module [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_bcdedit.py)
 
 What works on a lower level?
 
@@ -34,7 +32,7 @@ What works on a lower level?
 
 - You can do raw reading and writing of EFI variables
 
-What works on a higher level or for specific EFI/UEFI variables and functionalities?
+What works on a higher level or for specific EFI/UEFI variables?
 
 - You can read the "BootCurrent" EFI variable
 

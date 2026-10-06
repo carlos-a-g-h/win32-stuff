@@ -1,0 +1,669 @@
+#!/usr/bin/python3
+
+# OK
+
+import ctypes
+from ctypes import (
+	Array,WinError,
+	get_last_error,wintypes,
+)
+
+import struct
+
+from typing import Callable,Mapping,Optional,Union
+
+from WUEFI_serde import (
+	parse_efi_BootOrder,
+
+	parse_efi_EFI_LOAD_OPTION,
+		# parse_efi_elo_filepathlist,
+
+	build_efi_BootOrder,
+	build_efi_elo_Description
+)
+
+from WUEFI_symbols import (
+
+	# _NULLTERM,
+
+	_ELO_ATTR_ACTIVE,
+	_ELO_ATTR_CATEGORY_BOOT,
+	_ELO_NODE_END,
+
+	_EFI_GLOBALVAR,
+	_EFI_VAR_NON_VOLATILE,
+	_EFI_VAR_BOOTSERVICE_ACCESS,
+	_EFI_VAR_RUNTIME_ACCESS
+)
+
+from WUEFI_utils import is_hex as util_is_hex
+
+###############################################################################
+
+# Lower level functions
+
+def get_fwtype(
+		fun_GetFirmwareType:Callable,
+		debug:bool=False
+	)->Optional[int]:
+
+	# Returns the firmware type as an int
+
+	res_dword=wintypes.DWORD()
+	if not fun_GetFirmwareType(
+			ctypes.byref(res_dword)
+		):
+
+		err=get_last_error()
+		err_msg="Failed to determine the type of firmware"
+		if debug:
+			raise WinError(err,err_msg)
+		print(err,err_msg)
+
+		return None
+
+	return res_dword.value
+
+def read_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW:Callable,
+		varname:str,
+		efiguid:str=_EFI_GLOBALVAR,
+		debug:bool=True
+	)->Optional[bytes]:
+
+	# Reads an EFI variable
+
+	size_base=256
+	size=size_base
+
+	data:Optional[bytes]=None
+
+	err_msg:Optional[str]=None
+	err=-1
+
+	while True:
+
+		buff=ctypes.create_string_buffer(size)
+		howmuch=fun_GetFirmwareEnvironmentVariableW(
+			varname,
+			efiguid,
+			buff,
+			size
+		)
+		if howmuch>0:
+			data=buff.raw[:howmuch]
+			break
+
+		err=get_last_error()
+
+		if err==122:
+			size=size+size_base
+			continue
+
+		if err==203:
+			err_msg=f"EFI var not found: {varname}"
+			break
+
+		err_msg=f"Failed to find EFI var: {varname}"
+		break
+
+	if err_msg is not None:
+
+		if debug:
+			raise WinError(err,err_msg)
+		print(err,err_msg)
+
+		return None
+
+	return data
+
+def write_efi_variable(
+		fun_SetFirmwareEnvironmentVariableExW:Callable,
+		varname:str,
+		varvalue:Optional[bytes],
+		efiguid:str=_EFI_GLOBALVAR,
+		efiattrs:int=(
+			_EFI_VAR_NON_VOLATILE
+				| _EFI_VAR_BOOTSERVICE_ACCESS
+				| _EFI_VAR_RUNTIME_ACCESS
+		),
+		debug:bool=False,
+	)->bool:
+
+	# Sets a new value for an EFI variable
+	# If the value is None, the variable gets erased
+
+	valbuff:Optional[Array]=None
+	valpoint:Optional[Array]=None
+	valsize=0
+
+	if varvalue is not None:
+		valbuff=ctypes.create_string_buffer(varvalue)
+		valpoint=valbuff
+		valsize=len(varvalue)
+
+	done=fun_SetFirmwareEnvironmentVariableExW(
+		varname,efiguid,
+		valpoint,valsize,
+		efiattrs
+	)
+
+	if not done==1:
+
+		err=get_last_error()
+		err_msg=(
+			"Failed to set new value"
+			" for the selected EFI var"
+		)
+
+		if debug:
+			raise WinError(err,err_msg)
+		print(err,err_msg)
+
+	return done==1
+
+###############################################################################
+
+def get_evar_BootCurrent(
+		fun_GetFirmwareEnvironmentVariableW:Callable,
+		return_content:bool=False,
+		raw_only:bool=False,
+		debug:bool=False
+	)->Union[bytes,Mapping,Optional[str]]:
+
+	# Get the value inside the "BootCurrent" EFI variable
+
+	data:Optional[bytes]=read_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW,
+		"BootCurrent",
+		debug=debug
+	)
+
+	if not isinstance(data,(bytes,bytearray)):
+		if return_content:
+			return {}
+		return None
+
+	if return_content:
+
+		data_unpkg=struct.unpack("<H",data)
+		boot_entry=f"Boot{data_unpkg[0]:04X}"
+
+		evar_raw=read_efi_variable(
+			fun_GetFirmwareEnvironmentVariableW,
+			boot_entry
+		)
+
+		if raw_only:
+			return evar_raw
+
+		return parse_efi_EFI_LOAD_OPTION(
+			evar_raw,
+			name=boot_entry
+		)
+
+	# BY DEFAULT WE DO NOT REUTRN THE CONTENT, ONLY THE NAME
+
+	if raw_only:
+		return data
+
+	data_unpkg=struct.unpack("<H",data)
+	boot_entry=f"Boot{data_unpkg[0]:04X}"
+
+	return boot_entry
+
+def get_evar_BootNext(
+		fun_GetFirmwareEnvironmentVariableW:Callable,
+		return_content:bool=False,
+		raw_only:bool=False,
+		debug:bool=False
+	)->Optional[str]:
+
+	# Get the value inside the "BootNext" EFI variable
+
+	data:Optional[bytes]=read_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW,
+		"BootNext",
+		debug=debug
+	)
+	if not isinstance(data,(bytes,bytearray)):
+		if return_content:
+			return {}
+		return None
+
+	if return_content:
+
+		data_unpkg=struct.unpack("<H",data)
+		boot_entry=f"Boot{data_unpkg[0]:04X}"
+
+		evar_raw=read_efi_variable(
+			fun_GetFirmwareEnvironmentVariableW,
+			boot_entry
+		)
+
+		if raw_only:
+			return evar_raw
+
+		return parse_efi_EFI_LOAD_OPTION(
+			evar_raw,
+			name=boot_entry
+		)
+
+	# BY DEFAULT WE DO NOT REUTRN THE CONTENT, ONLY THE NAME
+
+	if raw_only:
+		return data
+
+	data_unpkg=struct.unpack("<H",data)
+	boot_entry=f"Boot{data_unpkg[0]:04X}"
+
+	return boot_entry
+
+def set_evar_BootNext(
+		fun_SetFirmwareEnvironmentVariableExW:Callable,
+		boot_entry:str,
+		debug:bool=False,
+	)->bool:
+
+	# Set the new value for the "BootNext" EFI variable
+
+	if not len(boot_entry)==8:
+		return False
+
+	if not boot_entry.startswith("Boot"):
+		return False
+
+	boot_num=int(boot_entry[4:],16)
+
+	boot_next_val=struct.pack(
+		"<H",boot_num
+	)
+
+	done=write_efi_variable(
+		fun_SetFirmwareEnvironmentVariableExW,
+		"BootNext",boot_next_val,
+		debug=debug
+	)
+
+	return done
+
+def get_evar_BootOrder(
+		fun_GetFirmwareEnvironmentVariableW:Callable,
+		as_list:bool=False,
+		raw_only:bool=False,
+		debug:bool=False
+	)->Optional[Union[tuple,list],bytes]:
+
+	# Get the value inside the "BootOrder" EFI Variable
+
+	data:Optional[bytes]=read_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW,
+		"BootOrder",
+		debug=debug
+	)
+	if data is None:
+		if as_list:
+			return []
+		return None
+
+	if raw_only:
+		return data
+
+	boot_order=parse_efi_BootOrder(data,as_list=as_list)
+
+	return boot_order
+
+def set_evar_BootOrder(
+		fun_SetFirmwareEnvironmentVariableExW:Callable,
+		boot_order:Union[tuple,list],
+		debug:bool=False
+	)->Union[bytes,bool]:
+
+	data_bytes=build_efi_BootOrder(boot_order)
+
+	if debug:
+		return data_bytes
+
+	ok=write_efi_variable(
+		fun_SetFirmwareEnvironmentVariableExW,
+		"BootOrder",data_bytes,
+		debug=debug
+	)
+
+	return ok
+
+def get_evar_BootNNNN(
+		fun_GetFirmwareEnvironmentVariableW,
+		boot_entry:str,
+		raw_only:bool=False,
+		debug:bool=False,
+	)->dict:
+
+	# Gets the contents of a specific boot entry (EFI LOAD OPTION)
+
+	if not len(boot_entry)==8:
+		return {}
+
+	if not boot_entry[0:4]=="Boot":
+		return {}
+
+	if not util_is_hex(boot_entry[4:]):
+		return {}
+
+	data_bytes=read_efi_variable(
+		fun_GetFirmwareEnvironmentVariableW,
+		boot_entry,
+		debug=debug
+	)
+
+	if raw_only:
+		return data_bytes
+
+	if data_bytes is None:
+		return {}
+
+	data_bytes_size=len(data_bytes)
+
+	if debug:
+		print(
+			"LEN; RAW DATA:",
+			data_bytes_size,
+			data_bytes
+		)
+
+	data_ok=parse_efi_EFI_LOAD_OPTION(
+		data_bytes,
+		name=boot_entry,
+		debug=debug
+	)
+
+	return data_ok
+
+def set_evar_BootNNNN(
+
+		# If None instead of Callback, it will return the payload and not write it
+		fun_SetFirmwareEnvironmentVariableExW:Optional[Callable],
+		# Boot####
+			boot_entry:str,
+		# The name of a Bootloader or an OS for example
+			description:str,
+		# List of nodes WITHOUT including the end of filepath node
+			nodes:list,
+		# Attributes (don't touch this unless you know what you're doing)
+			attributes:int=(
+				_ELO_ATTR_ACTIVE | _ELO_ATTR_CATEGORY_BOOT
+			),
+		# the OptionalData field
+			opdata:Optional[bytes]=None,
+
+		debug:bool=False
+	)->Union[bool,Optional[bytes]]:
+
+	#
+
+	bytes_fpathlst=b""
+	for nnn in nodes:
+		bytes_fpathlst=bytes_fpathlst+nnn
+	bytes_fpathlst=bytes_fpathlst+_ELO_NODE_END
+
+	fpathlst_len=len(bytes_fpathlst)
+
+	# PAYLOAD CONSTRUCTION
+
+	payload=b""
+
+	# Field 1
+	# Attributes
+	# UINT32
+	# Size 4
+
+	bytes_attributes=struct.pack("<I",attributes)
+
+	if debug:
+		assert len(bytes_attributes)==4
+
+	payload=payload+bytes_attributes
+
+	# Field 2
+	# FilePathListLength
+	# UINT16
+	# Offset 0x04
+	# Size 2
+
+	bytes_fpathlst_len=fpathlst_len.to_bytes(
+		length=2,
+		byteorder="little"
+	)
+
+	if debug:
+		assert len(bytes_fpathlst_len)==2
+
+	payload=payload+bytes_fpathlst_len
+
+	# Field 3
+	# Description
+	# UTF-16 string, Null term.
+	# Offset 0x06
+	# Size any
+
+	payload=payload+build_efi_elo_Description(description)
+
+	# Field 4
+	# FilePathList
+	# Complicated shit
+	# Offset depends on where does Desccription ends
+	# Size is given by FilePathListLength
+
+	payload=payload+bytes_fpathlst
+
+	# Field 5
+	# OptionalData
+
+	if isinstance(opdata,bytes):
+
+		payload=payload+opdata
+
+	if debug:
+
+		# NOTE:
+		# Since this function is highly dangerous, the debug argument will return
+		# the constructed payload that has been formed and it will NOT perform a
+		# write operation
+
+		return payload
+
+	if not isinstance(fun_SetFirmwareEnvironmentVariableExW,Callable):
+
+		return payload
+
+	ok=write_efi_variable(
+		fun_SetFirmwareEnvironmentVariableExW,
+		boot_entry,payload,
+		debug=debug
+	)
+
+	return ok
+
+
+if __name__=="__main__":
+
+	# Some tests
+
+	from sys import exit as sys_exit
+	from sys import argv as sys_argv
+
+	from WPrivilege import (
+		query_proc_priv_info,
+		env_gain_extra_priv
+	)
+	from WUEFI_ctypes import (
+		import_GetFwType,
+		import_GetFwEnVarW,
+		import_SetFwEnvVarExW
+	)
+	from WUEFI_utils import is_fwtype_uefi
+
+	arg_main=sys_argv[1].strip().lower()
+
+	_BOOT_ORDER_ADD_FIRST="BootOrder.add_first"
+	_BOOT_ORDER_ADD_LAST="BootOrder.add_last"
+	_BOOT_ORDER_REMOVE="BootOrder.remove"
+
+	if arg_main=="help":
+
+		epoint=sys_argv[0]
+		is_exe=epoint.endswith(".exe")
+
+		if is_exe:
+			epoint=f"> {epoint}"
+		if not is_exe:
+			epoint=f"> python {epoint}"
+
+		print(
+			f"\nGet boot entries, BootOrder, BootNext, and BootOrder):\n{epoint}",
+			"get|read","$EFI_VARIABLE"
+		)
+
+		print(
+			f"\nSet BootNext variable:\n{epoint}",
+			"set|write","BootNext","$BootNNNN"
+		)
+
+		print(
+			f"\nAppend a boot entry at the end of the boot order:\n{epoint}",
+			"set|write",_BOOT_ORDER_ADD_LAST,"$BootNNNN"
+		)
+
+		print(
+			f"\nAdd the boot entry to the fist place of the boot order:\n{epoint}",
+			"set|write",_BOOT_ORDER_ADD_FIRST,"$BootNNNN"
+		)
+
+		print(
+			f"\nRemove a boot entry from the boot order:\n{epoint}",
+			"set|write",_BOOT_ORDER_REMOVE,"$BootNNNN"
+		)
+
+		sys_exit(0)
+
+	if not query_proc_priv_info(
+			get_is_elevated=False,
+			get_is_admin=True
+		):
+		print("You must run this program as administrator")
+		sys_exit(0)
+
+	env_gain_extra_priv()
+
+	GetFwType=import_GetFwType()
+
+	if not is_fwtype_uefi(GetFwType):
+		print("CANNNOT UNDER A NON UEFI/EFI BOOTED SYSTEM")
+		sys_exit(0)
+
+	GetFwEnVarW=import_GetFwEnVarW()
+
+	if arg_main in ("get","read"):
+
+		evar=sys_argv[2].strip()
+
+		if evar=="BootCurrent":
+			print(
+				"BootCurrent:",
+				get_evar_BootCurrent(GetFwEnVarW,return_content=True)
+			)
+			sys_exit(0)
+
+		if evar=="BootNext":
+			print(
+				"BootNext:",
+				get_evar_BootNext(GetFwEnVarW)
+			)
+			sys_exit(0)
+
+		if evar=="BootOrder":
+			print(
+				"BootOrder:",
+				get_evar_BootOrder(GetFwEnVarW,as_list=True)
+			)
+			sys_exit(0)
+
+		if evar.startswith("Boot"):
+			print(
+				f"{evar}:",
+				get_evar_BootNNNN(GetFwEnVarW,evar)
+			)
+
+		sys_exit(0)
+
+	if arg_main in ("set","write"):
+
+		SetFwEnvVarExW=import_SetFwEnvVarExW()
+
+		arg_action=sys_argv[2].strip()
+
+		if arg_action=="BootNext":
+
+			evar=sys_argv[3].strip()
+
+			if set_evar_BootNext(SetFwEnvVarExW,evar):
+				print(f"new BootNext: {evar}")
+				sys_exit(0)
+
+			print("FAILED")
+			sys_exit(1)
+
+
+		if arg_action in (
+				_BOOT_ORDER_ADD_FIRST,
+				_BOOT_ORDER_ADD_LAST,
+				_BOOT_ORDER_REMOVE
+			):
+
+			evar=sys_argv[3].strip()
+
+			boot_order=get_evar_BootOrder(GetFwEnVarW,as_list=True)
+
+			if arg_action==_BOOT_ORDER_REMOVE:
+
+				if evar in boot_order:
+
+					boot_order.remove(evar)
+
+					if set_evar_BootOrder(SetFwEnvVarExW,boot_order):
+						print("NEW BootOrder:",boot_order)
+						sys_exit(0)
+
+					print("FAILED")
+					sys_exit(1)
+
+			if arg_action==_BOOT_ORDER_ADD_LAST:
+
+				if evar in boot_order:
+					boot_order.remove(evar)
+
+				boot_order.append(evar)
+
+				if set_evar_BootOrder(SetFwEnvVarExW,boot_order,debut=True):
+					print("NEW BootOrder:",boot_order)
+					sys_exit(0)
+
+				print("FAILED")
+				sys_exit(1)
+
+			if arg_action==_BOOT_ORDER_ADD_FIRST:
+	
+				if evar in boot_order:
+					boot_order.remove(evar)
+					print("AFTER REMOVAL",boot_order)
+
+				boot_order_new=[evar]
+
+				boot_order_new.extend(boot_order)
+	
+				if set_evar_BootOrder(SetFwEnvVarExW,boot_order_new):
+					print("NEW BootOrder:",boot_order_new)
+					sys_exit(0)
+
+				print("FAILED")
+				sys_exit(1)
