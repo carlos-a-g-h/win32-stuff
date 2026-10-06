@@ -24,6 +24,51 @@ from WUEFI_symbols import (
 
 # Misc. Utilities
 
+def rich_err_hand(
+		msg:str,
+		code:int=0,
+		prefix:Optional[str]=None,
+		as_exc:bool=False,
+		payload:list=[],
+		print_only:bool=False,
+	)->tuple:
+
+	# Rich error handling and result function. No exceptions are thrown y default
+
+	# NOTE:
+
+	# Returns tuple(CODE,MESSAGE), where CODE is an integer that represents a step
+	# or an exit code and MESSAGE is a string with the detailed error, and the
+	# payload is any aditional data that can be delivered with the error, growing
+	# the tuple with the aditional data
+
+	has_prefix=(isinstance(prefix,str))
+	success=(code==0)
+	if has_prefix:
+		if success:
+			print(prefix,msg)
+		if not success:
+			print(prefix,f"Error {code};",msg)
+	if not has_prefix:
+		if success:
+			print(msg)
+		if not success:
+			print(f"Error {code};",msg)
+
+	if as_exc and (not success):
+
+		txt=f"Error {code}; "+msg
+		if has_prefix:
+			txt=prefix+" "+txt
+
+		raise Exception(txt)
+
+	result=[code,msg]
+	if not len(payload)==0:
+		result.extend(payload)
+
+	return tuple(payload)
+
 def is_uint8(data:int)->bool:
 	if not data>-1:
 		return False

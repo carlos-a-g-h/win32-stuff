@@ -27,12 +27,17 @@ from WUEFI_serde import (
 	build_efi_elo_fpl_node_Media_FilePath
 )
 
-# from WUEFI_symbols import (_ELO_NODE_MEDIA_FILEPATH,_ELO_NODE_END)
+from WUEFI_utils import rich_err_hand
 
 def main_CreateFwBootEntry(
 
 		# Creates a firmware boot entry using a combination of BCDEDIT commands and
 		# Windows API functions related to EFI variables
+
+		# NOTE:
+		# This function makes serveral assumptions, the most important one being
+		# that you are creating an EFI Boot entry placing an EFI file of a bootloader
+		# inside the same ESP where you have Windows's main EFI file
 
 		# (Windows API) GetFirmwareEnvironmentVariableW
 			fun_GetFwEnVarW:Callable,
@@ -46,7 +51,8 @@ def main_CreateFwBootEntry(
 		opt_BootNext:bool=False,
 		opt_BootOrder_addfirst:bool=False,
 
-		debug:bool=False
+		debug:bool=False,
+		detailed_output:bool=False,
 
 	)->Optional[tuple]:
 
@@ -56,8 +62,12 @@ def main_CreateFwBootEntry(
 
 	boot_order_before=get_evar_BootOrder(fun_GetFwEnVarW)
 	if boot_order_before is None:
+		c=1
+		m="BootOrder not found?"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug)
 		if debug:
-			print(fn,"01 ERROR: BootOrder not found?")
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	# (2) Copy the Windows firmware boot entry
@@ -67,8 +77,12 @@ def main_CreateFwBootEntry(
 		debug=debug
 	)
 	if entry_guid is None:
+		c=2
+		m="Failed to copy Windows's firmware boot entry into a new one"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug)
 		if debug:
-			print(fn,"02 ERROR: Failed to copy Windows's firmware boot entry intoa  new one")
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	print(fn,"02 ENTRY GUID:",entry_guid)
@@ -80,25 +94,38 @@ def main_CreateFwBootEntry(
 			"path",filepath,
 			debug=debug
 		):
+		c=3
+		m="Failed to set custom path to "+entry_guid
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid])
 		if debug:
-			print(fn,"03 ERROR: Failed to set custom path to",entry_guid)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	# (4,5) Get the new current BootOrder
 
 	boot_order_after=get_evar_BootOrder(fun_GetFwEnVarW)
 	if boot_order_after is None:
+		c=4
+		m="Failed to get the new BootOrder"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid])
 		if debug:
-			print(fn,"04 ERROR: Failed to get the new BootOrder")
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
-	if not len(boot_order_after)==len(boot_order_before)+1:
+	sizediff=len(boot_order_after)-len(boot_order_before)
+
+	if not sizediff==1:
+		c=5
+		m=(
+			"The new BootOrder is supposed to have one more item compared to the"
+			" previous BootOrder"
+		)
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid])
 		if debug:
-			print(
-				fn,
-				"05 ERROR: The new BootOrder is supposed to have one more item compared"
-				" to the previous BootOrder"
-			)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	# (6) Extract the new entry name as Boot####
@@ -109,8 +136,12 @@ def main_CreateFwBootEntry(
 			continue
 		entry_name=name
 	if entry_name is None:
+		c=6
+		m="Failed to get the name of the new boot entry"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid])
 		if debug:
-			print(fn,"06 ERROR: Failed to get the name of the new boot entry")
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	print(fn,"06 ENTRY NAME:",entry_name)
@@ -123,40 +154,47 @@ def main_CreateFwBootEntry(
 		debug=debug
 	)
 	if len(entry_details)==0:
+		c=7
+		m="Failed to parse "+entry_name
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			print(fn,"07 ERROR: Failed to parse",entry_name)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
+
 	optdata_offset:Optional[int]=entry_details.get("filepath_list_end")
 	if optdata_offset is None:
+		c=8
+		m=f"Unable to determine where does {entry_name}'s OptionalData starts"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			print(
-				fn,
-				f"08 ERROR: Missing data from {entry_name}'s' FilePathList:"
-				" filepath_list_end",
-			)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
+
 	if not optdata_offset>0:
+		c=9
+		m=f"Expected the given OptionalData offset from {entry_name} to be larger than zero"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			print(
-				fn,
-				f"09 ERROR: Expected the OptionalData offset from {entry_name}'s'"
-				" FilePathList: to be larger than zero",
-			)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	# (10, 11) Read the boot entry as raw data, cut off the OptionalData and, if
-	# requested, add the new metadata
+	# provided, add the metadata as the new OptionalData for the boot entry
 
 	entry_raw:Optional[bytes]=read_efi_variable(
 		fun_GetFwEnVarW,
 		entry_name
 	)
 	if entry_raw is None:
+		c=10
+		m=f"Failed to read {entry_name} as a raw EFI variable"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			print(
-				fn,
-				f"10 ERROR: Failed to read {entry_name} as a raw EFI variable"
-			)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	entry_raw_ok=entry_raw[0:optdata_offset]
@@ -168,43 +206,50 @@ def main_CreateFwBootEntry(
 			entry_name,
 			entry_raw_ok
 		):
+		c=11
+		m=f"Failed to write the new data to {entry_name}"
+		if detailed_output:
+			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			print(
-				fn,
-				f"11 ERROR: Failed to write the new data to {entry_name}"
-			)
+			rich_err_hand(m,code=c,prefix=fn,print_only=True)
 		return None
 
 	# (12, 13) Set BootOrder and BootNext thorugh BCDEDIT
+
+	notes=[]
 
 	if opt_BootNext:
 		if not bcdedit_fwbs_new(
 				entry_guid,
 				debug=True
 			):
-			if debug:
-				print(
-					fn,
-					"12 WARNING: Failed to set",entry_guid,"as the next entry to boot"
-				)
-			# return None
+			m="Failed to set"+entry_guid+"as the NEXT entry to boot"
+			notes.append(m)
 
 	if opt_BootOrder_addfirst:
 		if not bcdedit_fwdo_add1st(
 				[entry_guid],
 				debug=True
 			):
-				print(
-					fn,
-					"12 WARNING: Failed to add",entry_guid,"as the first system to boot"
-				)
-			# return None
+			m="Failed to set"+entry_guid+"as the FIRST entry to boot"
+			notes.append(m)
 
 	if debug:
 		print(
-			fn,"returns",
+			fn,"Returns:",
 			(entry_name,entry_guid)
 		)
+		if not len(notes)==0:
+			print(fn,"Warnings:",notes)
+
+	if detailed_output:
+
+		# Returns ( CODE, ENTRY_NAME , ENTRY_GUID , NOTE1, NOTE2 )
+
+		result=[0,entry_name,entry_guid]
+		if not len(notes)==0:
+			result.extend(notes)
+		return tuple(result)
 
 	return (entry_name,entry_guid)
 
@@ -227,10 +272,10 @@ def main_LocateFwBootEntry(
 		# OptionalData
 			hint_metadata:Optional[bytes]=None,
 
-		# Return detailed content instead of just the name
-		return_detailed:bool=False,
+		# Return the content of the boot entry instead of the name
+		return_content:bool=False,
 
-		debug=False,
+		debug=False
 
 	)->Union[Optional[str],Mapping]:
 
@@ -240,14 +285,16 @@ def main_LocateFwBootEntry(
 	ph_filepath=(isinstance(hint_filepath,str))
 	ph_metadata=(isinstance(hint_metadata,bytes))
 
+	# Check 1
+
 	if not (
 			ph_description or
 			ph_filepath or
 			ph_metadata
 		):
 		if debug:
-			print(fn,"ERROR: Nothing to do?")
-		if return_detailed:
+			rich_err_hand("Nothing to do?",code=1,prefix=fn,print_only=True)
+		if return_content:
 			return {}
 		return None
 
@@ -260,10 +307,13 @@ def main_LocateFwBootEntry(
 	if ph_metadata:
 		matches_req=matches_req+1
 
+	# Check 2
+
 	boot_order=get_evar_BootOrder(fun_GetFwEnVarW)
 	if boot_order is None:
-		print(fn,"ERROR: Boot order not found...?")
-		if return_detailed:
+		if debug:
+			rich_err_hand("Boot order not found...?",code=2,prefix=fn,print_only=True)
+		if return_content:
 			return {}
 		return None
 
@@ -277,7 +327,7 @@ def main_LocateFwBootEntry(
 		):
 
 		if debug:
-			print(fn,"Provided metadata hint only")
+			print(fn,"NOTE: (after check 2) provided metadata only")
 
 		metadata_len=len(hint_metadata)
 
@@ -302,20 +352,26 @@ def main_LocateFwBootEntry(
 
 			if found[-1][1][optdata_offset:-1]==hint_metadata:
 				if debug:
-					print(fn,f"{name} matches the metadata")
+					print(fn,f"The OptionalData found in {name} matches the given metadata")
 				break
 
 			found.pop(-1)
 			continue
 
+		# Check 3
+
 		if not len(found)==1:
 			if debug:
-				print(fn,"ERROR: Found",len(found),"instead of ONE")
-			if return_detailed:
+				rich_err_hand(
+					f"Found {len(found)} instead of ONE",
+					code=3,prefix=fn,
+					print_only=True
+				)
+			if return_content:
 				return {}
 			return None
 
-		if return_detailed:
+		if return_content:
 
 			name=found[-1][0]
 
@@ -366,7 +422,7 @@ def main_LocateFwBootEntry(
 		if ph_filepath:
 			if found[-1][1].find(node_media_fpath)==-1:
 				if debug:
-					print(fn,f"Media FilePath Node not found in {name}")
+					print(fn,f"Media FilePath node not found in {name}")
 				found.pop(-1)
 				continue
 			matches_found=matches_found+1
@@ -388,14 +444,20 @@ def main_LocateFwBootEntry(
 		if debug:
 			print(fn,f"Hints match {name}")
 
+	# Check 4
+
 	if not len(found)==1:
 		if debug:
-			print(fn,"ERROR: Found",len(found),"instead of ONE")
+			rich_err_hand(
+				f"Found {len(found)} instead of ONE",
+				code=4,prefix=fn,
+				print_only=True
+			)
 		return None
 
 	entry_name=found[-1][0]
 
-	if return_detailed:
+	if return_content:
 
 		entry_data=found[-1][1]
 
@@ -406,9 +468,62 @@ def main_LocateFwBootEntry(
 		)
 
 	if debug:
-		print(fn,"returns",entry_name)
+		print(fn,"Returns:",entry_name)
 
 	return entry_name
+
+def main_FwBootEntry_EditMetadata(
+		# Edits the OptionalData of an existing EFI_LOAD_OPTION
+
+		# NOTE:
+		# Some EFI bootloaders could malfunction if they have an OptionalData
+		# field or if it is removed/altered
+
+		# (Windows API) GetFirmwareEnvironmentVariableW
+			fun_GetFwEnVarW:Callable,
+		# (Windows API) SetFirmwareEnvironmentVariableExW
+			fun_SetFwEnvVarExW:Callable,
+
+		# Target boot entry
+		boot_entry:str,
+
+		# New metadata (OptionalData)
+		metadata:Optional[bytes]
+
+	)->bool:
+
+	fn="main_FwBootEntry_EditMetadata()"
+
+	# (1, 2) Check wether the given boot entry exists
+
+	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,as_list=True)
+	if len(boot_order)==0:
+		return False
+
+	if boot_entry not in boot_order:
+		return False
+
+	# (3) read the boot entry as a raw EFI variable
+
+	data_curr:Optional[bytes]=read_efi_variable(
+		fun_GetFwEnVarW,
+		boot_entry
+	)
+	if data_curr is None:
+		return False
+
+	# (4, 5) Parse the raw data and get the offset of the OptionalData
+
+	data_parsed=parse_efi_EFI_LOAD_OPTION(data_curr)
+	if len(data_parsed):
+		return False
+
+	opdata_offset:Optional[int]=data_parsed.get("filepath_list_end")
+	if not isinstance(opdata_offset):
+		return False
+
+	pass
+
 
 ###############################################################################
 
@@ -438,7 +553,7 @@ if __name__=="__main__":
 	# Parameters
 
 	the_path="\\EFI\\Boot\\grub2.bootx64.efi"
-	the_desc="GRUB2 EFI (WUEFI)"
+	the_desc="MY GRUB 2 EFI"
 	set_bootnext=False
 	set_bootfirst=False
 
@@ -468,7 +583,7 @@ if __name__=="__main__":
 		main_LocateFwBootEntry(
 			fun_EFIVarGetter,
 			hint_description=the_desc,
-			return_detailed=True,
+			return_content=True,
 			debug=True
 		)
 	)
