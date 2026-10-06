@@ -24,14 +24,14 @@ from WUEFI_symbols import (
 
 # Misc. Utilities
 
-def rich_err_hand(
+def return_result(
 		msg:str,
 		code:int=0,
 		prefix:Optional[str]=None,
 		as_exc:bool=False,
 		payload:list=[],
 		print_only:bool=False,
-	)->tuple:
+	)->Optional[tuple]:
 
 	# Rich error handling and result function. No exceptions are thrown y default
 
@@ -54,6 +54,9 @@ def rich_err_hand(
 			print(msg)
 		if not success:
 			print(f"Error {code};",msg)
+
+	if print_only:
+		return None
 
 	if as_exc and (not success):
 

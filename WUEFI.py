@@ -28,7 +28,7 @@ from WUEFI_serde import (
 	build_efi_elo_fpl_node_Media_FilePath
 )
 
-from WUEFI_utils import rich_err_hand
+from WUEFI_utils import return_result
 
 def main_CreateFwBootEntry(
 
@@ -61,61 +61,61 @@ def main_CreateFwBootEntry(
 
 	# (1) Copy the Windows firmware boot entry with a temporary description
 
-	tmp_desc=f"New entry {token_hex(16)}"
+	tmp_desc=f"BootEntry {token_hex(16)}"
 
-	c=1
+	step=1
 	entry_guid=bcdedit_copy(
 		description=tmp_desc,
 		debug=debug
 	)
 	if entry_guid is None:
-		m="Failed to copy Windows's firmware boot entry into a new one"
+		msg="Failed to copy Windows's firmware boot entry into a new one"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug)
+			return return_result(msg,prefix=fn,code=step,as_exc=debug)
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	print(
 		fn,
-		"02 ENTRY GUID:",entry_guid,
+		"01 ENTRY GUID:",entry_guid,
 		"; tmp_desc:",tmp_desc
 	)
 
 	# (2) Modify the new firmware boot entry
 
-	c=c+1
+	step=step+1
 	if not bcdedit_set(
 			entry_guid,
 			"path",filepath,
 			debug=debug
 		):
-		m="Failed to set custom path to "+entry_guid
+		msg="Failed to set custom path to "+entry_guid
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	# (3, 4) Get the name of the new boot entry as Boot####
 
-	c=c+1
+	step=step+1
 	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,as_list=True)
 	if boot_order is None:
-		m="Failed to get the new BootOrder"
+		msg="Failed to get the new BootOrder"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	found=[]
 	tmp_desc_bytes=build_efi_elo_Description(tmp_desc)
-	for be in boot_order:
+	for cbe in boot_order:
 		found.append(
 			read_efi_variable(
 				fun_GetFwEnVarW,
-				be
+				cbe
 			)
 		)
 		if not isinstance(found[-1],bytes):
@@ -124,13 +124,13 @@ def main_CreateFwBootEntry(
 		if not found[-1].find(tmp_desc_bytes)>0:
 			found.pop(-1)
 
-	c=c+1
+	step=step+1
 	if len(found)==1:
-		m="Multiple descriptions match the temporary description"
+		msg="Multiple descriptions match the temporary description"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,tmp_desc])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,tmp_desc])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	entry_name=found.pop(0)
@@ -139,104 +139,104 @@ def main_CreateFwBootEntry(
 
 	# (5) Set the actual description
 
-	c=c+1
-	if not bcdedit_set(entry_guid,"description",description):
-		m="Failed to change the temporary description for the real description"
+	step=step+1
+	if not bcdedit_set(entry_guid,"description",description,debug=debug):
+		msg="Failed to change the temporary description for the real description"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	# (6, 7, 8) From the entry details, get the OptionalData offset
 
-	c=c+1
+	step=step+1
 	entry_details=get_evar_BootNNNN(
 		fun_GetFwEnVarW,
 		entry_name,
 		debug=debug
 	)
 	if len(entry_details)==0:
-		m="Failed to parse "+entry_name
+		msg="Failed to parse "+entry_name
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
-	c=c+1
+	step=step+1
 	optdata_offset:Optional[int]=entry_details.get("filepath_list_end")
 	if optdata_offset is None:
-		m=f"Unable to determine where does {entry_name}'s OptionalData starts"
+		msg=f"Unable to determine where does {entry_name}'s OptionalData starts"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
-	c=c+1
+	step=step+1
 	if not optdata_offset>0:
-		m=f"Expected the given OptionalData offset from {entry_name} to be larger than zero"
+		msg=f"Expected the given OptionalData offset from {entry_name} to be larger than zero"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	# (9, 10) Read the boot entry as raw data, cut off the OptionalData and, if
 	# provided, add the metadata as the new OptionalData for the boot entry
 
-	c=c+1
+	step=step+1
 	entry_raw:Optional[bytes]=read_efi_variable(
 		fun_GetFwEnVarW,
 		entry_name
 	)
 	if entry_raw is None:
-		m=f"Failed to read {entry_name} as a raw EFI variable"
+		msg=f"Failed to read {entry_name} as a raw EFI variable"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	entry_raw_ok=entry_raw[0:optdata_offset]
 	if isinstance(metadata,bytes):
 		entry_raw_ok=entry_raw_ok+metadata
 
-	c=c+1
+	step=step+1
 	if not write_efi_variable(
 			fun_SetFwEnvVarExW,
 			entry_name,
 			entry_raw_ok
 		):
-		m=f"Failed to write the new data to {entry_name}"
+		msg=f"Failed to write the new data to {entry_name}"
 		if detailed_output:
-			return rich_err_hand(m,prefix=fn,code=c,as_exc=debug,payload=[entry_guid,entry_name])
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
 		if debug:
-			rich_err_hand(m,code=c,prefix=fn,print_only=True)
+			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
 	# (11, 12) Set BootOrder and BootNext thorugh BCDEDIT
 
 	notes=[]
 
-	c=c+1
+	step=step+1
 	if opt_BootNext:
 		if not bcdedit_fwbs_new(
 				entry_guid,
 				debug=True
 			):
-			m="Failed to set"+entry_guid+"as the NEXT entry to boot"
-			notes.append(m)
+			msg="Failed to set"+entry_guid+"as the NEXT entry to boot"
+			notes.append(msg)
 
-	c=c+1
+	step=step+1
 	if opt_BootOrder_addfirst:
 		if not bcdedit_fwdo_add1st(
 				[entry_guid],
 				debug=True
 			):
-			m="Failed to set"+entry_guid+"as the FIRST entry to boot"
-			notes.append(m)
+			msg="Failed to set"+entry_guid+"as the FIRST entry to boot"
+			notes.append(msg)
 
 	if debug:
 		print(
@@ -297,7 +297,7 @@ def main_LocateFwBootEntry(
 			ph_metadata
 		):
 		if debug:
-			rich_err_hand("Nothing to do?",code=1,prefix=fn,print_only=True)
+			return_result("Nothing to do?",code=1,prefix=fn,print_only=True)
 		if return_content:
 			return {}
 		return None
@@ -316,7 +316,7 @@ def main_LocateFwBootEntry(
 	boot_order=get_evar_BootOrder(fun_GetFwEnVarW)
 	if boot_order is None:
 		if debug:
-			rich_err_hand("Boot order not found...?",code=2,prefix=fn,print_only=True)
+			return_result("Boot order not found...?",code=2,prefix=fn,print_only=True)
 		if return_content:
 			return {}
 		return None
@@ -366,7 +366,7 @@ def main_LocateFwBootEntry(
 
 		if not len(found)==1:
 			if debug:
-				rich_err_hand(
+				return_result(
 					f"Found {len(found)} instead of ONE",
 					code=3,prefix=fn,
 					print_only=True
@@ -452,7 +452,7 @@ def main_LocateFwBootEntry(
 
 	if not len(found)==1:
 		if debug:
-			rich_err_hand(
+			return_result(
 				f"Found {len(found)} instead of ONE",
 				code=4,prefix=fn,
 				print_only=True
