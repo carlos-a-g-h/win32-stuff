@@ -522,8 +522,27 @@ def main_FwBootEntry_EditMetadata(
 	if not isinstance(opdata_offset):
 		return False
 
-	pass
+	if opdata_offset<1:
+		return False
 
+	data_new=data_curr[0:opdata_offset]
+
+	if metadata is not None:
+
+		ok=isinstance(metadata,bytes)
+		if not ok:
+			return False
+
+		if len(metadata)==0:
+			return False
+
+		data_new=data_new+metadata
+
+	return write_efi_variable(
+		fun_SetFwEnvVarExW,
+		boot_entry,
+		data_new
+	)
 
 ###############################################################################
 
