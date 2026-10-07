@@ -9,7 +9,7 @@ from WUEFI_symbols import (
 
 from WUEFI_utils import (
 	fix_str as util_fix_str,
-	is_guid as util_is_guid,
+	is_guid as is_guid,
 	subproc as util_subproc,
 	split_line_into_kv as util_split_line_into_kv,
 )
@@ -49,7 +49,7 @@ def util_filter_identifier(
 				return identifier
 			return True
 
-	result:Union[bool,Optional[str]]=util_is_guid(
+	result:Union[bool,Optional[str]]=is_guid(
 		identifier,
 		return_data=return_data
 	)
@@ -140,8 +140,8 @@ def parse_enum_entry_listfield(
 		opt_wrap_in_a_hashmap:bool=False
 	)->Union[str,list,Mapping]:
 
-	# NOTE:
-	# parses list items such as displayorder
+	# Handles values stored as lists. A good example of this is the
+	# "displayorder" property
 
 	first_item=util_split_line_into_kv(
 		lines_list[offset],
@@ -388,7 +388,8 @@ def cmd_entry_copy(
 	)->Optional[str]:
 
 	# Copies an entry and returns the GUID of the new entry
-	# By default, it copies the {bootmgr} entry
+	# By default, it copies the {bootmgr} entry, which is the most common
+	# approach for creating new firmware boot entries
 
 	target=util_filter_identifier(
 		identifier,
@@ -499,7 +500,7 @@ def cmd_entry_delete(
 	# an identifier in the form of a GUID, which means that you SHOULD NOT try
 	# and target identifiers such as {bootmgr} or {fwbootmgr}
 
-	target=util_is_guid(
+	target=is_guid(
 		identifier,verbose=debug,
 		return_data=True
 	)

@@ -97,6 +97,8 @@ def parse_efi_elo_fpl_node_head(
 	# Type
 
 	readmax=1
+	if readmax>len(data[offset:]):
+		return None
 
 	x_type=int.from_bytes(
 		data[offset:offset+readmax],
@@ -126,6 +128,8 @@ def parse_efi_elo_fpl_node_head(
 	# Subtype
 
 	readmax=1
+	if readmax>len(data[offset:]):
+		return None
 
 	x_subtype=int.from_bytes(
 		data[offset:offset+readmax],
@@ -155,6 +159,8 @@ def parse_efi_elo_fpl_node_head(
 	# NodeSize
 
 	readmax=2
+	if readmax>len(data[offset:]):
+		return None
 
 	x_nodesize=int.from_bytes(
 		data[offset:offset+readmax],
@@ -232,12 +238,22 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 
 	offset=offset+4
 
+	# Check if the data is long enough
+	if x_nodesize>len(data[data_offset:]):
+		if verify_build:
+			return False
+		return {}
+
 	# NAMESPACE ID
 	# UINT32
 	# Offset 4
 	# Size 4
 
 	readmax=4
+	if readmax>len(data[offset:]):
+		if verify_build:
+			return False
+		return {}
 
 	d_namespace_id=int.from_bytes(
 		data[offset:offset+readmax],
@@ -252,6 +268,10 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 	# Size 8
 
 	readmax=8
+	if readmax>len(data[offset:]):
+		if verify_build:
+			return False
+		return {}
 
 	d_namespace_uuid=data[offset:offset+readmax].hex(sep="-")
 
@@ -321,6 +341,12 @@ def parse_efi_elo_fpl_node_ACPI_HID(
 			return {}
 
 		x_nodesize=header_info[2]
+
+	# Check if the data is long enough
+	if x_nodesize>len(data[data_offset:]):
+		if verify_build:
+			return False
+		return {}
 
 	offset=offset+4
 
@@ -435,6 +461,12 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 
 	offset=offset+4
 
+	# Check if the data is long enough
+	if x_nodesize>len(data[data_offset:]):
+		if verify_build:
+			return False
+		return {}
+
 	# Function
 	# UINT8
 	# Offset 4
@@ -541,6 +573,12 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		x_nodesize=header_info[2]
 
 	offset=data_offset+4
+
+	# Check if the data is long enough
+	if x_nodesize>len(data[data_offset:]):
+		if verify_build:
+			return False
+		return {}
 
 	# Partition Number
 	# UINT32 LE
@@ -728,6 +766,12 @@ def parse_efi_elo_fpl_node_Media_FilePath(
 		x_nodesize=header_info[2]
 
 	offset=offset+4
+
+	if x_nodesize>-1:
+		if x_nodesize>len(data[data_offset:]):
+			if verify_build:
+				return False
+			return {}
 
 	# Filepath
 	# UINT32 LE NT
@@ -956,7 +1000,7 @@ def parse_efi_elo_filepathlist(
 
 			if cnode_headertype==2:
 
-				# ENd of filepathlist node
+				# END of filepathlist node
 
 				print("REACHED END OF FILE_PATH_LIST")
 
@@ -990,7 +1034,6 @@ def parse_efi_elo_filepathlist(
 
 def parse_efi_EFI_LOAD_OPTION(
 		data:bytes,
-		data_offset:int=0,
 		name:Optional[str]=None,
 		skip_fixed_size_nodes:bool=False,
 		debug:bool=False
@@ -1009,6 +1052,10 @@ def parse_efi_EFI_LOAD_OPTION(
 	# Size 4
 
 	readmax=4
+
+	if readmax>len(data[offset:]):
+		return {}
+
 	data_attributes=data[offset:offset+readmax]
 	if debug:
 		print(
@@ -1030,6 +1077,9 @@ def parse_efi_EFI_LOAD_OPTION(
 	# UINT16
 	# Offset 0x04
 	# Size 2
+
+	if readmax>len(data[offset:]):
+		return {}
 
 	readmax=2
 	data_fpathlen=data[offset:offset+readmax]
@@ -1056,6 +1106,9 @@ def parse_efi_EFI_LOAD_OPTION(
 	if not readmax%2==0:
 		readmax=readmax+1
 
+	if readmax>len(data[offset:]):
+		return {}
+
 	data_description=data[offset:offset+readmax]
 	data_description_ok=data_description.decode("utf-16-le")
 
@@ -1070,6 +1123,9 @@ def parse_efi_EFI_LOAD_OPTION(
 	# Complicated shit
 	# Offset depends on where does Desccription ends
 	# Size is given by FilePathListLength
+
+	if data_fpathlen_ok>len(data[offset:]):
+		return {}
 
 	data_fpathlist=data[offset:offset+data_fpathlen_ok]
 
@@ -1088,7 +1144,8 @@ def parse_efi_EFI_LOAD_OPTION(
 		"description":data_description_ok,
 		"filepath_list":data_fpathlist_ok,
 		"filepath_list_start":offset,
-		"filepath_list_end":offset+data_fpathlen_ok
+		"filepath_list_end":offset+data_fpathlen_ok,
+		"filepath_list_size":data_fpathlen_ok
 	})
 
 	offset=offset+data_fpathlen_ok

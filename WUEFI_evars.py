@@ -13,8 +13,8 @@ import struct
 from typing import Callable,Mapping,Optional,Union
 
 from WUEFI_serde import (
-	parse_efi_BootOrder,
 
+	parse_efi_BootOrder,
 	parse_efi_EFI_LOAD_OPTION,
 		# parse_efi_elo_filepathlist,
 
@@ -23,8 +23,6 @@ from WUEFI_serde import (
 )
 
 from WUEFI_symbols import (
-
-	# _NULLTERM,
 
 	_ELO_ATTR_ACTIVE,
 	_ELO_ATTR_CATEGORY_BOOT,
@@ -398,8 +396,6 @@ def set_evar_BootNNNN(
 
 		debug:bool=False
 	)->Union[bool,Optional[bytes]]:
-
-	#
 
 	bytes_fpathlst=b""
 	for nnn in nodes:

@@ -5,7 +5,7 @@
 from pathlib import Path,WindowsPath
 from random import randint
 from subprocess import run as sub_run,CompletedProcess
-from typing import Callable,Mapping,Optional,Union
+from typing import Any,Callable,Mapping,Optional,Union
 
 import ctypes
 from ctypes import wintypes,WinError,get_last_error
@@ -72,28 +72,36 @@ def return_result(
 
 	return tuple(payload)
 
-def is_uint8(data:int)->bool:
+def is_uint8(data:Optional[Any])->bool:
+	if not isinstance(data,int):
+		return False
 	if not data>-1:
 		return False
 	if not data<_UINT8_MAX:
 		return False
 	return True
 
-def is_uint16(data:int)->bool:
+def is_uint16(data:Optional[Any])->bool:
+	if not isinstance(data,int):
+		return False
 	if not data>-1:
 		return False
 	if not data<_UINT16_MAX:
 		return False
 	return True
 
-def is_uint32(data:int)->bool:
+def is_uint32(data:Optional[Any])->bool:
+	if not isinstance(data,int):
+		return False
 	if not data>-1:
 		return False
 	if not data<_UINT32_MAX:
 		return False
 	return True
 
-def is_uint64(data:int)->bool:
+def is_uint64(data:Optional[Any])->bool:
+	if not isinstance(data,int):
+		return False
 	if not data>-1:
 		return False
 	if not data<_UINT64_MAX:
