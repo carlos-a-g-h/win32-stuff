@@ -195,8 +195,9 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		verify_build:bool=False
-	)->Union[bool,dict]:
+		verify_build:bool=False,
+		extract_slice:bool=False,
+	)->Union[bool,dict,Optional[bytes]]:
 
 	# EFI LOAD OPTION FilePathList (Messageing NVMe Namespace Node)
 
@@ -232,6 +233,8 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 			print(err_msg)
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 		x_nodesize=header_info[2]
@@ -242,6 +245,8 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 	if x_nodesize>len(data[data_offset:]):
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	# NAMESPACE ID
@@ -253,6 +258,8 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 	if readmax>len(data[offset:]):
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	d_namespace_id=int.from_bytes(
@@ -271,6 +278,8 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 	if readmax>len(data[offset:]):
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	d_namespace_uuid=data[offset:offset+readmax].hex(sep="-")
@@ -287,7 +296,15 @@ def parse_efi_elo_fpl_node_Messaging_NVMeNamespace(
 	if verify_build:
 		return ok
 	if not ok:
+		if extract_slice:
+			return None
 		return {}
+
+	# All good
+
+	if extract_slice:
+		return data[data_offset:data_offset+progress]
+
 	return {
 		"node_header":_ELO_NODE_MESSAGING_NVMENAMESPACE,
 
@@ -302,8 +319,9 @@ def parse_efi_elo_fpl_node_ACPI_HID(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		verify_build:bool=False
-	)->Union[bool,dict]:
+		verify_build:bool=False,
+		extract_slice:bool=False
+	)->Union[bool,dict,Optional[bytes]]:
 
 	# EFI LOAD OPTION FilePathList (ACPI HID Node)
 
@@ -338,6 +356,8 @@ def parse_efi_elo_fpl_node_ACPI_HID(
 			print(err_msg)
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 		x_nodesize=header_info[2]
@@ -346,6 +366,8 @@ def parse_efi_elo_fpl_node_ACPI_HID(
 	if x_nodesize>len(data[data_offset:]):
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+4
@@ -398,7 +420,15 @@ def parse_efi_elo_fpl_node_ACPI_HID(
 	if verify_build:
 		return ok
 	if not ok:
+		if extract_slice:
+			return None
 		return {}
+
+	# All Good
+
+	if extract_slice:
+		return data[data_offset:data_offset+progress]
+
 	return {
 		"node_header":_ELO_NODE_ACPI_HID,
 
@@ -416,14 +446,14 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		verify_build:bool=False
+		verify_build:bool=False,
+		extract_slice:bool=False
 	)->Union[bool,dict]:
 
 	# EFI LOAD OPTION FilePathList (Hardware PCI Node)
 
 	# NOTE:
 	# Fixed size of 6
-
 
 	x_nodesize=-1
 	offset=data_offset
@@ -455,6 +485,8 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 			print(err_msg)
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 		x_nodesize=header_info[2]
@@ -465,6 +497,8 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 	if x_nodesize>len(data[data_offset:]):
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	# Function
@@ -484,6 +518,8 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -504,6 +540,8 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -515,7 +553,14 @@ def parse_efi_elo_fpl_node_Hardware_PCI(
 	if verify_build:
 		return ok
 	if not ok:
+		if extract_slice:
+			return None
 		return {}
+
+	# All Good
+
+	if extract_slice:
+		return data[data_offset:data_offset+progress]
 	return {
 		"node_header":_ELO_NODE_HARDWARE_PCI,
 
@@ -530,7 +575,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		data:bytes,
 		data_offset:int=0,
 		unsafe:bool=False,
-		verify_build:bool=False
+		verify_build:bool=False,
+		extract_slice:bool=False
 	)->Union[bool,dict]:
 
 	# EFI LOAD OPTION File Path List (Media Hard Drive Node)
@@ -568,6 +614,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 			print(err_msg)
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 		x_nodesize=header_info[2]
@@ -578,6 +626,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 	if x_nodesize>len(data[data_offset:]):
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	# Partition Number
@@ -596,6 +646,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -615,6 +667,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -634,6 +688,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -656,6 +712,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	d_partguid_ok=str(tmp)
@@ -677,6 +735,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -696,6 +756,8 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 		print(err_msg)
 		if verify_build:
 			return False
+		if extract_slice:
+			return None
 		return {}
 
 	offset=offset+readmax
@@ -707,7 +769,15 @@ def parse_efi_elo_fpl_node_Media_HardDrive(
 	if verify_build:
 		return ok
 	if not ok:
+		if extract_slice:
+			return None
 		return {}
+
+	# All Good
+
+	if extract_slice:
+		return data[data_offset:data_offset:progress]
+
 	return {
 		"node_header":_ELO_NODE_MEDIA_HARDDRIVE,
 
@@ -728,6 +798,7 @@ def parse_efi_elo_fpl_node_Media_FilePath(
 		data_offset:int=0,
 		unsafe:bool=False,
 		verify_build:bool=False,
+		extract_slice:bool=False
 	)->Union[bool,dict]:
 
 	# EFI LOAD OPTION File Path List (Media Filepath Node)
@@ -761,6 +832,8 @@ def parse_efi_elo_fpl_node_Media_FilePath(
 			print(err_msg)
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 		x_nodesize=header_info[2]
@@ -771,6 +844,8 @@ def parse_efi_elo_fpl_node_Media_FilePath(
 		if x_nodesize>len(data[data_offset:]):
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 	# Filepath
@@ -795,6 +870,8 @@ def parse_efi_elo_fpl_node_Media_FilePath(
 			print(err_msg)
 			if verify_build:
 				return False
+			if extract_slice:
+				return None
 			return {}
 
 		if not d_filepath_end%2==0:
@@ -814,7 +891,15 @@ def parse_efi_elo_fpl_node_Media_FilePath(
 	if verify_build:
 		return ok
 	if not ok:
+		if extract_slice:
+			return None
 		return {}
+
+	# All Good
+
+	if extract_slice:
+		return data[data_offset:data_offset+progress]
+
 	return {
 		"node_header":_ELO_NODE_MEDIA_FILEPATH,
 
@@ -1006,7 +1091,7 @@ def parse_efi_elo_filepathlist(
 
 				node_index=node_index+1
 				nodes.append({
-					"header":_ELO_NODE_END,
+					"node_header":_ELO_NODE_END,
 					"node_index":node_index,
 					"payload_size":4,
 					"payload_end":offset+4
@@ -1035,11 +1120,14 @@ def parse_efi_elo_filepathlist(
 def parse_efi_EFI_LOAD_OPTION(
 		data:bytes,
 		name:Optional[str]=None,
+		# return_sizes:bool=False,
 		skip_fixed_size_nodes:bool=False,
 		debug:bool=False
-	)->dict:
+	)->Union[list,dict]:
 
 	# Parsing according to the EFI_LOAD_OPTION specification
+
+	# list_sizes=[]
 
 	data_bytes_size=len(data)
 
@@ -1052,8 +1140,9 @@ def parse_efi_EFI_LOAD_OPTION(
 	# Size 4
 
 	readmax=4
-
 	if readmax>len(data[offset:]):
+		# if return_sizes:
+		# 	return []
 		return {}
 
 	data_attributes=data[offset:offset+readmax]
@@ -1072,16 +1161,18 @@ def parse_efi_EFI_LOAD_OPTION(
 
 	offset=offset+readmax
 
+	# list_sizes.append(readmax)
+
 	# Field 2
 	# FilePathListLength
 	# UINT16
 	# Offset 0x04
 	# Size 2
 
+	readmax=2
 	if readmax>len(data[offset:]):
 		return {}
 
-	readmax=2
 	data_fpathlen=data[offset:offset+readmax]
 	data_fpathlen_ok=int.from_bytes(
 		data_fpathlen,
@@ -1092,6 +1183,8 @@ def parse_efi_EFI_LOAD_OPTION(
 		print("FILEPATH LENGTH (OK):",data_fpathlen_ok)
 
 	offset=offset+readmax
+
+	# list_sizes.append(readmax)
 
 	# Field 3
 	# Description
@@ -1110,13 +1203,17 @@ def parse_efi_EFI_LOAD_OPTION(
 		return {}
 
 	data_description=data[offset:offset+readmax]
-	data_description_ok=data_description.decode("utf-16-le")
+	data_description_ok=data_description.decode(_ENC_UTF16LE)
 
 	if debug:
 		print("DESCRIPTION:",data_description)
 		print("DESCRIPTION (OK):",data_description_ok)
 
-	offset=offset+readmax+len(_NULLTERM)
+	readmax=readmax+len(_NULLTERM)
+
+	offset=offset+readmax
+
+	# list_sizes.append(readmax)
 
 	# Field 4
 	# FilePathList
@@ -1164,6 +1261,9 @@ def parse_efi_EFI_LOAD_OPTION(
 	data_optional=data[offset:]
 
 	data_ok.update({"optdata":data_optional})
+
+	if debug:
+		print("data_ok:",data_ok)
 
 	return data_ok
 

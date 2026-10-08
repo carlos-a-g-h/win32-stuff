@@ -53,15 +53,11 @@ def main_CreateFwBootEntry(
 		description:str,
 		metadata:Optional[bytes]=None,
 
-		# A.T.E. = At The End
+		set_BootNext:bool=False,
+		set_BootOrder_addfirst:bool=False,
 
-		# Use BCDEDIT to modify BootNext and/or the BootOrder instead of the Windows
-		# API functions
-		ate_use_bcdedit:bool=False,
-		# Add the new entry as the next one to boot
-		ate_BootNext:bool=False,
-		# Add the new entry as first one to boot
-		ate_BootOrder_addfirst:bool=False,
+		cfg_set_BootNext_and_BootOrder_using_bcdedit:bool=False,
+		cfg_set_path_and_desc_using_bcdedit:bool=False,
 
 		debug:bool=False,
 		detailed_output:bool=False,
@@ -93,22 +89,7 @@ def main_CreateFwBootEntry(
 		"; tmp_desc:",tmp_desc
 	)
 
-	# (2) Modify the new firmware boot entry
-
-	step=step+1
-	if not bcdedit_set(
-			entry_guid,
-			"path",filepath,
-			debug=debug
-		):
-		msg="Failed to set custom path to "+entry_guid
-		if detailed_output:
-			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid])
-		if debug:
-			return_result(msg,code=step,prefix=fn,print_only=True)
-		return None
-
-	# (3, 4) Get the name of the new boot entry as Boot####
+	# (2, 3) Get the name of the new boot entry as Boot####
 
 	step=step+1
 	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,as_list=True)
@@ -151,63 +132,55 @@ def main_CreateFwBootEntry(
 
 	found.pop()
 
-	print(fn,"04 ENTRY NAME FOUND:",entry_name)
+	print(fn,"03 ENTRY NAME FOUND:",entry_name)
 
-	# (5) Set the actual description
+	# (4, 5) Set real filepath and description using BCDEDIT
 
-	step=step+1
-	if not bcdedit_set(entry_guid,"description",description,debug=debug):
-		msg="Failed to change the temporary description for the real description"
-		if detailed_output:
-			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+	if not cfg_set_path_and_desc_using_bcdedit:
+
+		step=step+2
+
+	if cfg_set_path_and_desc_using_bcdedit:
+
 		if debug:
-			return_result(msg,code=step,prefix=fn,print_only=True)
-		return None
+			print(fn,step,"Using BCDEDIT to set the path and description of the new entry")
 
-	# (6, 7, 8) From the entry details, get the OptionalData offset
+		step=step+1
+		if not bcdedit_set(
+				entry_guid,
+				"path",
+				filepath,
+				debug=debug
+			):
+			msg="Failed to set custom path to "+entry_guid
+			if detailed_output:
+				return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid])
+			if debug:
+				return_result(msg,code=step,prefix=fn,print_only=True)
+			return None
 
-	step=step+1
-	entry_details=get_evar_BootNNNN(
-		fun_GetFwEnVarW,
-		entry_name,
-		debug=debug
-	)
-	if len(entry_details)==0:
-		msg="Failed to parse "+entry_name
-		if detailed_output:
-			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
-		if debug:
-			return_result(msg,code=step,prefix=fn,print_only=True)
-		return None
+		step=step+1
+		if not bcdedit_set(
+				entry_guid,
+				"description",
+				description,
+				debug=debug
+			):
+			msg="Failed to change the temporary description for the real description"
+			if detailed_output:
+				return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+			if debug:
+				return_result(msg,code=step,prefix=fn,print_only=True)
+			return None
 
-	step=step+1
-	optdata_offset:Optional[int]=entry_details.get("filepath_list_end")
-	if optdata_offset is None:
-		msg=f"Unable to determine where does {entry_name}'s OptionalData starts"
-		if detailed_output:
-			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
-		if debug:
-			return_result(msg,code=step,prefix=fn,print_only=True)
-		return None
-
-	step=step+1
-	if not optdata_offset>0:
-		msg=f"Expected the given OptionalData offset from {entry_name} to be larger than zero"
-		if detailed_output:
-			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
-		if debug:
-			return_result(msg,code=step,prefix=fn,print_only=True)
-		return None
-
-	# (9, 10) Read the boot entry as raw data, cut off the OptionalData and, if
-	# provided, add the metadata as the new OptionalData for the boot entry
+	# (6) Read the boot entry as raw data
 
 	step=step+1
-	entry_raw:Optional[bytes]=read_efi_variable(
+	data_curr:Optional[bytes]=read_efi_variable(
 		fun_GetFwEnVarW,
 		entry_name
 	)
-	if entry_raw is None:
+	if data_curr is None:
 		msg=f"Failed to read {entry_name} as a raw EFI variable"
 		if detailed_output:
 			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
@@ -215,15 +188,153 @@ def main_CreateFwBootEntry(
 			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
-	entry_raw_ok=entry_raw[0:optdata_offset]
+	# (7) Parse the current data of the new entry
+
+	step=step+1
+	data_curr_parsed=parse_efi_EFI_LOAD_OPTION(
+		data_curr,
+		debug=debug
+	)
+	if len(data_curr_parsed)==0:
+		msg=f"Failed to parse {entry_name}"
+		if detailed_output:
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+		if debug:
+			return_result(msg,code=step,prefix=fn,print_only=True)
+		return None
+
+	# (8, 9, 10, 11) Grab data from the deserialized boot entry
+
+	step=step+1
+	data_curr_fpl_start=data_curr_parsed.get("filepath_list_start")
+	data_curr_fpl_end=data_curr_parsed.get("filepath_list_end")
+	ok=isinstance(
+		data_curr_parsed.get("filepath_list"),
+		list
+	)
+	if not (
+			is_uint32(data_curr_fpl_start) and
+			is_uint32(data_curr_fpl_end) and
+			ok
+		):
+		if debug:
+			print(
+				"is filepath_list a list?",ok,
+				"; filepath_list_start =",data_curr_fpl_start,
+				"; filepath_list_end =",data_curr_fpl_end
+			)
+		msg=f"Failed to grab parsed data from {entry_name}"
+		if detailed_output:
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+		if debug:
+			return_result(msg,code=step,prefix=fn,print_only=True)
+		return None
+
+	step=step+1
+	if not len(data_curr_parsed["filepath_list"])>1:
+		msg=f"The FilePathList from {entry_name} has less than two nodes"
+		if detailed_output:
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+		if debug:
+			return_result(msg,code=step,prefix=fn,print_only=True)
+		return None
+
+	step=step+1
+	if not (
+			isinstance(
+				data_curr_parsed["filepath_list"][-1],
+				dict
+			) and
+			isinstance(
+				data_curr_parsed["filepath_list"][-2],
+				dict
+			)
+		):
+		msg=f"The last two nodes in {entry_name}'s FilePathList are not nodes"
+		if detailed_output:
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+		if debug:
+			return_result(msg,code=step,prefix=fn,print_only=True)
+		return None
+
+	step=step+1
+	if not (
+			data_curr_parsed["filepath_list"][-1].get("node_header")==_ELO_NODE_END and
+			data_curr_parsed["filepath_list"][-2].get("node_header")==_ELO_NODE_MEDIA_FILEPATH
+		):
+		msg=f"The last two nodes in {entry_name}'s FilePathList do not contain the required headers"
+		if detailed_output:
+			return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+		if debug:
+			return_result(msg,code=step,prefix=fn,print_only=True)
+		return None
+
+	# (12) Build the new EFI_LOAD_OPTION payload
+
+	# Field 1 (Attributes)
+
+	data_new=data_curr[:4]
+
+	step=step+1
+
+	if cfg_set_path_and_desc_using_bcdedit:
+
+		data_new=data_new+data_curr[:data_curr_fpl_end]
+
+	if not cfg_set_path_and_desc_using_bcdedit:
+
+		if debug:
+			print(fn,step,"Using WinAPI to set the path and description of the new entry")
+
+		n1_size=data_curr_parsed["filepath_list"][-1].get("payload_size")
+		n2_size=data_curr_parsed["filepath_list"][-2].get("payload_size")
+		if not (
+				is_uint32(n1_size) and
+				is_uint32(n2_size)
+			):
+			msg=f"The last two nodes in {entry_name}'s FilePathList have an unknown size"
+			if detailed_output:
+				return return_result(msg,prefix=fn,code=step,as_exc=debug,payload=[entry_guid,entry_name])
+			if debug:
+				return_result(msg,code=step,prefix=fn,print_only=True)
+			return None
+
+		cutoff=n1_size+n2_size
+		newelo_fpl_node_media_fpath=build_efi_elo_fpl_node_Media_FilePath(filepath)
+		newelo_fpl=data_curr[data_curr_fpl_start:data_curr_fpl_end-cutoff]+newelo_fpl_node_media_fpath+_ELO_NODE_END
+
+		# Field 2 (FilePathListLength)
+
+		newelo_fpl_len=len(newelo_fpl)
+		newelo_fpl_len_bytes=newelo_fpl_len.to_bytes(length=2,byteorder="little")
+		data_new=data_new+newelo_fpl_len_bytes
+
+		# Field 3 (Description)
+
+		data_new=data_new+build_efi_elo_Description(description)
+
+		# Field 4 (FilePathList)
+
+		data_new=data_new+newelo_fpl
+
+	# Field 5 (OptionalData)
+
 	if isinstance(metadata,bytes):
-		entry_raw_ok=entry_raw_ok+metadata
+		data_new=data_new+metadata
+
+	if debug:
+		print(
+			"\nNEW DATA:",
+			parse_efi_EFI_LOAD_OPTION(data_new,debug)
+		)
+
+	# (13) Write the new
 
 	step=step+1
 	if not write_efi_variable(
 			fun_SetFwEnvVarExW,
 			entry_name,
-			entry_raw_ok
+			data_new
 		):
 		msg=f"Failed to write the new data to {entry_name}"
 		if detailed_output:
@@ -232,16 +343,19 @@ def main_CreateFwBootEntry(
 			return_result(msg,code=step,prefix=fn,print_only=True)
 		return None
 
-	# (11, 12) At The End. Set BootOrder and BootNext
+	# (14, 15) At The End. Set BootOrder and BootNext
 	# This is entirely optional
 
 	notes=[]
 
 	step=step+1
 
-	if ate_BootNext:
+	if set_BootNext:
 
-		if ate_use_bcdedit:
+		if cfg_set_BootNext_and_BootOrder_using_bcdedit:
+
+			if debug:
+				print(fn,step,"Using BCDEDIT to set BootNext")
 
 			if not bcdedit_fwbs_new(
 					entry_guid,
@@ -250,7 +364,10 @@ def main_CreateFwBootEntry(
 				msg="Failed to set"+entry_guid+"as the NEXT entry to boot"
 				notes.append(msg)
 
-		if not ate_use_bcdedit:
+		if not cfg_set_BootNext_and_BootOrder_using_bcdedit:
+
+			if debug:
+				print(fn,step,"Using WinAPI to set BootNext")
 
 			if not set_evar_BootNext(
 					fun_SetFwEnvVarExW,
@@ -262,9 +379,12 @@ def main_CreateFwBootEntry(
 
 	step=step+1
 
-	if ate_BootOrder_addfirst:
+	if set_BootOrder_addfirst:
 
-		if ate_use_bcdedit:
+		if cfg_set_BootNext_and_BootOrder_using_bcdedit:
+
+			if debug:
+				print(fn,step,"Using BCDEDIT to set BootOrder")
 
 			if not bcdedit_fwdo_add1st(
 					[entry_guid],
@@ -273,11 +393,14 @@ def main_CreateFwBootEntry(
 				msg="Failed to set"+entry_guid+"as the FIRST entry to boot"
 				notes.append(msg)
 
-		if not ate_use_bcdedit:
+		if not cfg_set_BootNext_and_BootOrder_using_bcdedit:
 
 			boot_order.remove(entry_name)
 			boot_order_new=[entry_name]
 			boot_order_new.extend(boot_order)
+
+			if debug:
+				print(fn,step,"Using WinAPI to set BootOrder")
 
 			if not set_evar_BootOrder(
 					fun_SetFwEnvVarExW,
@@ -760,7 +883,7 @@ if __name__=="__main__":
 	# Parameters
 
 	the_path="\\EFI\\Boot\\systemd-boot-x64.efi"
-	the_desc="SystemD Boot (test 2026-07-10_1)"
+	the_desc="SystemD Boot (pure bcdedit with Metadata)"
 	set_bootnext=True
 	set_bootfirst=True
 
@@ -777,10 +900,11 @@ if __name__=="__main__":
 		fun_EFIVarSetter,
 		the_path,
 		the_desc,
-		ate_BootNext=set_bootnext,
-		ate_BootOrder_addfirst=set_bootfirst,
-		debug=False,
-		detailed_output=True
+		set_BootNext=set_bootnext,
+		set_BootOrder_addfirst=set_bootfirst,
+		debug=True,
+		detailed_output=True,
+		metadata=b"Installed using WUEFI"
 	)
 	print("\nRESULT:",result)
 
