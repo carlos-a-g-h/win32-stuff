@@ -556,18 +556,19 @@ def cmd_fw_do_list(
 		return []
 
 	fwdo:Optional[str]=result_parsed[0].get("displayorder")
-
-	if fwdo is None:
+	if (fwdo is None) or (not isinstance(fwdo,str)):
 		return []
-
 	fwdo_list=fwdo.split(sep=" ")
+	if util_filter_identifier_list(
+			fwdo_list,
+			debug=debug
+		):
+		return []
 
 	if detailed:
 
 		entries=[]
-
 		for identifier in fwdo_list:
-
 			entries.extend(
 				cmd_entry_enum(
 					identifier,
@@ -605,9 +606,7 @@ def cmd_fw_do_modify_replace(
 			_ID_FWBOOTMGR,
 			"displayorder"
 	]
-
 	command.extend(tgtlist)
-
 	result_subproc=util_subproc(
 		command,
 		verbose=debug,
@@ -651,6 +650,73 @@ def cmd_fw_do_modify_addfirst(
 	)
 
 	return (result_subproc[0]==0)
+
+def cmd_fw_do_modify_addfirst_force(
+		id_list:Union[list,tuple],
+		debug:bool=False,
+		test:bool=False,
+	)->bool:
+
+	tgtlist=util_filter_identifier_list(
+		id_list,
+		whitelist=[_ID_BOOTMGR],
+		return_data=True,
+		debug=debug
+	)
+	if len(tgtlist)==0:
+		return False
+
+	result_subproc1=util_subproc(
+		[
+			"bcdedit","/enum",
+				_ID_FWBOOTMGR,
+				"/v"
+		]
+	)
+	if not result_subproc1[0]==0:
+		return []
+
+	result_parsed1=parse_enum(
+		result_subproc1[1],
+		kli=["displayorder"]
+	)
+	if not len(result_parsed1)==1:
+		return []
+
+	fwdo:Optional[str]=result_parsed1[0].get("displayorder")
+	if (fwdo is None) or (not isinstance(fwdo,str)):
+		return []
+	fwdo_list=fwdo.split(sep=" ")
+	if util_filter_identifier_list(
+			fwdo_list,
+			debug=debug
+		):
+		return []
+
+	fwdo_list_new=[]
+	for identifier in tgtlist:
+		fwdo_list_new.append(identifier)
+	fwdo_list_new.extend(fwdo_list)
+
+	fwdo_list_new_verified=util_filter_identifier_list(
+		fwdo_list_new,return_data=True,
+		debug=debug
+	)
+
+	command=[
+		"bcdedit","/set",
+			_ID_FWBOOTMGR,
+			"displayorder"
+	]
+	command.extend(fwdo_list_new_verified)
+	result_subproc2=util_subproc(
+		command,
+		verbose=debug,
+		test=test
+	)
+
+	return (result_subproc2[0]==0)
+
 
 def cmd_fw_do_modify_addlast(
 		id_list:Union[list,tuple],
