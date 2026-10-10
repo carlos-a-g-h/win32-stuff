@@ -8,7 +8,7 @@ from WUEFI_bcdedit import (
 	cmd_entry_copy as bcdedit_copy,
 	cmd_entry_modify as bcdedit_set,
 
-	cmd_fw_do_modify_addfirst as bcdedit_fwdo_add1st,
+	cmd_fw_do_modify_addfirst_force as bcdedit_fwdo_add1st,
 	cmd_fw_bs_modify as bcdedit_fwbs_new
 )
 
@@ -92,7 +92,7 @@ def main_CreateFwBootEntry(
 	# (2, 3) Get the name of the new boot entry as Boot####
 
 	step=step+1
-	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,as_list=True)
+	boot_order=get_evar_BootOrder(fun_GetFwEnVarW)
 	if len(boot_order)==0:
 		msg="Failed to get the BootOrder"
 		if detailed_output:
@@ -241,14 +241,8 @@ def main_CreateFwBootEntry(
 
 	step=step+1
 	if not (
-			isinstance(
-				data_curr_parsed["filepath_list"][-1],
-				dict
-			) and
-			isinstance(
-				data_curr_parsed["filepath_list"][-2],
-				dict
-			)
+			isinstance(data_curr_parsed["filepath_list"][-1],dict) and
+			isinstance(data_curr_parsed["filepath_list"][-2],dict)
 		):
 		msg=f"The last two nodes in {entry_name}'s FilePathList are not nodes"
 		if detailed_output:
@@ -485,7 +479,7 @@ def main_LocateFwBootEntry(
 
 	# Check 2
 
-	boot_order=get_evar_BootOrder(fun_GetFwEnVarW)
+	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,as_tuple=True)
 	if boot_order is None:
 		if debug:
 			return_result("Boot order not found...?",code=2,prefix=fn,print_only=True)
@@ -670,7 +664,8 @@ def main_EditFwBootEntry(
 		# New metadata (OptionalData)
 		metadata:Optional[bytes]=None,
 
-		detailed_output:bool=False
+		detailed_output:bool=False,
+		debug=False
 
 	)->Union[bool,Mapping]:
 
@@ -703,7 +698,7 @@ def main_EditFwBootEntry(
 	# Check wether the given boot entry exists
 
 	step=step+1
-	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,as_list=True)
+	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,debug=debug)
 	if len(boot_order)==0:
 		if detailed_output:
 			return return_result(
@@ -720,80 +715,60 @@ def main_EditFwBootEntry(
 
 	data_original:Optional[bytes]=read_efi_variable(
 		fun_GetFwEnVarW,
-		boot_entry
+		boot_entry,
+		debug=debug
 	)
 	if data_original is None:
 		return False
 
 	# Parse the raw data
 
-	data_parsed=parse_efi_EFI_LOAD_OPTION(data_original)
+	data_parsed=parse_efi_EFI_LOAD_OPTION(data_original,debug=debug)
 	if len(data_parsed)==0:
 		return False
 
 	curr_description=fix_str(data_parsed.get("description"))
-	if curr_description is None:
-		return False
-
-	# Make sure the FilePathList key is holding the list of nodes
-	if not isinstance(data_parsed.get("filepath_list"),list):
+	ok=isinstance(data_parsed.get("filepath_list"),list)
+	if (not ok) or (curr_description is None):
 		return False
 
 	# Make sure that there is more than one node
 	if not len(data_parsed.get("filepath_list"))>1:
 		return False
 
-	# Make sure the last node is A NODE
-	if not isinstance(data_parsed["filepath_list"][-1],Mapping):
+	fpl_start=data_parsed.get("filepath_list_start")
+	fpl_end=data_parsed.get("filepath_list_end")
+	nodesize_media_fpath=data_parsed["filepath_list"][-2].get("payload_size")
+	nodesize_final=data_parsed["filepath_list"][-1].get("payload_size")
+	if not (
+			is_uint32(fpl_start) and
+			is_uint32(fpl_end)
+		):
 		return False
 
-	# Make sure the last nodes are not raw
-	if isinstance(data_parsed["filepath_list"][-1].get("raw"),bytes):
+	ok1=isinstance(data_parsed["filepath_list"][-1],Mapping)
+	ok2=isinstance(data_parsed["filepath_list"][-2],Mapping)
+	if not (ok1 or ok2):
 		return False
 
-	# Detect Final Node
-	if not data_parsed["filepath_list"][-1].get("header")==_ELO_NODE_END:
+	ok1=data_parsed["filepath_list"][-1].get("node_header")==_ELO_NODE_END
+	ok2=data_parsed["filepath_list"][-2].get("node_header")==_ELO_NODE_MEDIA_FILEPATH
+	if not (ok1 or ok2):
 		return False
 
-	# Make sure the node before the last node is A NODE
-	if not isinstance(data_parsed["filepath_list"][-2],Mapping):
-		return False
-
-	# Detect Media Filepath Node
-	if not data_parsed["filepath_list"][-2].get("header")==_ELO_NODE_MEDIA_FILEPATH:
-		return False
-
-	# Get FilePathList start
-	filepathlist_start=data_parsed.get("filepath_list_start")
-	if not is_uint32(filepathlist_start):
-		return False
-
-	# Get FilePathList end
-	filepathlist_end=data_parsed.get("filepath_list_end")
-	if not is_uint32(filepathlist_end):
-		return False
-
-	# Get the size of the Media Filepath Node
-	size_node_media_fpath=data_parsed["filepath_list"][-2].get("payload_size")
-	if not is_uint32(size_node_media_fpath):
-		return False
-
-	# Get the size of the Final Node
-	size_node_final=data_parsed["filepath_list"][-1].get("payload_size")
-	if not is_uint32(size_node_final):
-		return False
+	# W.I.P.
 
 	# Get original OptionalData
-	curr_opdata=data_original[filepathlist_end:]
+	curr_opdata=data_original[fpl_end:]
 
 	# Build the new FilePathList and get its length
 
 	newdata_filepathlist=b""
 	if not ch_filepath:
-		newdata_filepathlist=data_original[filepathlist_start:filepathlist_end]
+		newdata_filepathlist=data_original[fpl_start:fpl_end]
 	if ch_filepath:
-		tmp=size_node_media_fpath+size_node_final
-		newdata_filepathlist=data_original[filepathlist_start:filepathlist_end-tmp]
+		tmp=nodesize_media_fpath+nodesize_final
+		newdata_filepathlist=data_original[fpl_start:fpl_end-tmp]
 		newdata_filepathlist=newdata_filepathlist+build_efi_elo_fpl_node_Media_FilePath(filepath)
 		newdata_filepathlist=newdata_filepathlist+_ELO_NODE_END
 	newdata_fpl_len=len(newdata_filepathlist)
@@ -842,7 +817,8 @@ def main_EditFwBootEntry(
 	if not write_efi_variable(
 			fun_SetFwEnvVarExW,
 			boot_entry,
-			newdata
+			newdata,
+			debug=debug
 		):
 
 		return False
@@ -880,17 +856,23 @@ if __name__=="__main__":
 
 	env_gain_extra_priv()
 
+	# Import some functions from WinDLL
+
+	fun_EFIVarGetter=import_GetFwEnVarW()
+	fun_EFIVarSetter=import_SetFwEnvVarExW()
+
+
+	r=main_EditFwBootEntry(fun_EFIVarGetter,fun_EFIVarSetter,"Boot0000",description="Yes",detailed_output=True)
+	print("d",r)
+
+	exit()
+
 	# Parameters
 
 	the_path="\\EFI\\Boot\\systemd-boot-x64.efi"
 	the_desc="SystemD Boot (pure bcdedit with Metadata)"
 	set_bootnext=True
 	set_bootfirst=True
-
-	# Import some functions from WinDLL
-
-	fun_EFIVarGetter=import_GetFwEnVarW()
-	fun_EFIVarSetter=import_SetFwEnvVarExW()
 
 	# Create a boot entry for a bootloader, set it as the next one to boot and as
 	# the first one to boot in the new boot order
@@ -907,13 +889,3 @@ if __name__=="__main__":
 		metadata=b"Installed using WUEFI"
 	)
 	print("\nRESULT:",result)
-
-	# Locate the new boot entry by its description and show its details if found
-
-	# entry_name=main_LocateFwBootEntry(
-	# 	fun_EFIVarGetter,
-	# 	hint_description=the_desc,
-	# 	debug=True
-	# )
-
-	# main_EditFwBootEntry(fun_EFIVarGetter,None,entry_name,description="SYSTEMDBOOT")
