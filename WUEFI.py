@@ -655,13 +655,13 @@ def main_EditFwBootEntry(
 		# Target boot entry (as  Boot####)
 		boot_entry:str,
 
-		# New description
+		# New description (E.L.O. Description)
 		description:Optional[str]=None,
 
-		# New filepath
+		# New filepath (E.L.O. FPL Media Filepath Node)
 		filepath:Optional[str]=None,
 
-		# New metadata (OptionalData)
+		# New metadata (E.L.O. OptionalData)
 		metadata:Optional[bytes]=None,
 
 		detailed_output:bool=False,
@@ -681,6 +681,8 @@ def main_EditFwBootEntry(
 
 	ch_metadata=isinstance(metadata,bytes)
 
+	# (1) YOu at least need to change something
+
 	step=1
 	if not (
 			ch_description or
@@ -695,78 +697,116 @@ def main_EditFwBootEntry(
 			)
 		return False
 
-	# Check wether the given boot entry exists
+	# (2, 3) Check wether the given boot entry exists
 
 	step=step+1
 	boot_order=get_evar_BootOrder(fun_GetFwEnVarW,debug=debug)
 	if len(boot_order)==0:
 		if detailed_output:
 			return return_result(
-				"Nothing to do...?",
+				"No BootOrder?",
 				prefix=fn,
 				code=step
 			)
 		return False
 
 	if boot_entry not in boot_order:
+		if detailed_output:
+			return return_result(
+				f"{boot_entry} not found in BootOrder",
+				prefix=fn,
+				code=step
+			)
 		return False
 
-	# Read the boot entry as a raw EFI variable
+	# (4, 5, 6, 7, 8, 9) Read and decode the boot entry as a raw EFI variable
 
+	err=False
+	err_step=0
+
+	step=step+1
 	data_original:Optional[bytes]=read_efi_variable(
 		fun_GetFwEnVarW,
 		boot_entry,
 		debug=debug
 	)
 	if data_original is None:
+		err=True
+		err_step=step
+
+	step=step+1
+	if not err:
+		data_parsed=parse_efi_EFI_LOAD_OPTION(data_original,debug=debug)
+		if len(data_parsed)==0:
+			err=True
+			err_step=step
+
+	step=step+1
+	if not err:
+		curr_description=fix_str(data_parsed.get("description"))
+		ok=isinstance(data_parsed.get("filepath_list"),list)
+		if (not ok) or (curr_description is None):
+			err=True
+			err_step=step
+
+	step=step+1
+	if not err:
+		if not len(data_parsed.get("filepath_list"))>1:
+			err=True
+			err_step=step
+
+	step=step+1
+	fpl_start:Optional[int]=None
+	fpl_end:Optional[int]=None
+	if not err:
+		fpl_start=data_parsed.get("filepath_list_start")
+		fpl_end=data_parsed.get("filepath_list_end")
+		ok1=isinstance(data_parsed["filepath_list"][-1],Mapping)
+		ok2=isinstance(data_parsed["filepath_list"][-2],Mapping)
+		if not (
+				ok1 and ok2 and
+				is_uint32(fpl_start) and
+				is_uint32(fpl_end)
+			):
+			err=True
+			err_step=step
+
+	step=step+1
+	nodesize_final:Optional[int]=None
+	nodesize_media_fpath:Optional[int]=None
+	if not err:
+		nodesize_final=data_parsed["filepath_list"][-1].get("payload_size")
+		nodesize_media_fpath=data_parsed["filepath_list"][-2].get("payload_size")
+		ok1=data_parsed["filepath_list"][-1].get("node_header")==_ELO_NODE_END
+		ok2=data_parsed["filepath_list"][-2].get("node_header")==_ELO_NODE_MEDIA_FILEPATH
+		if not (
+				ok1 and ok2 and
+				is_uint32(nodesize_final) and
+				is_uint32(nodesize_media_fpath)
+			):
+			err=True
+			err_step=step
+
+	if err:
+		if detailed_output:
+			return return_result(
+				f"({err_step}) Failed to parse {boot_entry}'s contents",
+				prefix=fn,
+				code=step
+			)
 		return False
-
-	# Parse the raw data
-
-	data_parsed=parse_efi_EFI_LOAD_OPTION(data_original,debug=debug)
-	if len(data_parsed)==0:
-		return False
-
-	curr_description=fix_str(data_parsed.get("description"))
-	ok=isinstance(data_parsed.get("filepath_list"),list)
-	if (not ok) or (curr_description is None):
-		return False
-
-	# Make sure that there is more than one node
-	if not len(data_parsed.get("filepath_list"))>1:
-		return False
-
-	fpl_start=data_parsed.get("filepath_list_start")
-	fpl_end=data_parsed.get("filepath_list_end")
-	nodesize_media_fpath=data_parsed["filepath_list"][-2].get("payload_size")
-	nodesize_final=data_parsed["filepath_list"][-1].get("payload_size")
-	if not (
-			is_uint32(fpl_start) and
-			is_uint32(fpl_end)
-		):
-		return False
-
-	ok1=isinstance(data_parsed["filepath_list"][-1],Mapping)
-	ok2=isinstance(data_parsed["filepath_list"][-2],Mapping)
-	if not (ok1 or ok2):
-		return False
-
-	ok1=data_parsed["filepath_list"][-1].get("node_header")==_ELO_NODE_END
-	ok2=data_parsed["filepath_list"][-2].get("node_header")==_ELO_NODE_MEDIA_FILEPATH
-	if not (ok1 or ok2):
-		return False
-
-	# W.I.P.
 
 	# Get original OptionalData
-	curr_opdata=data_original[fpl_end:]
+	# curr_opdata=data_original[fpl_end:]
 
 	# Build the new FilePathList and get its length
 
 	newdata_filepathlist=b""
 	if not ch_filepath:
-		newdata_filepathlist=data_original[fpl_start:fpl_end]
+		newdata_filepathlist=newdata_filepathlist+data_original[fpl_start:fpl_end]
 	if ch_filepath:
+		if debug:
+			print("CHANGING FILEPATH")
 		tmp=nodesize_media_fpath+nodesize_final
 		newdata_filepathlist=data_original[fpl_start:fpl_end-tmp]
 		newdata_filepathlist=newdata_filepathlist+build_efi_elo_fpl_node_Media_FilePath(filepath)
@@ -781,14 +821,15 @@ def main_EditFwBootEntry(
 
 	# 2 - FilePathListLength
 
-	if ch_filepath:
-		newdata=newdata+newdata_fpl_len.to_bytes(length=2,byteorder="little")
+	newdata=newdata+newdata_fpl_len.to_bytes(length=2,byteorder="little")
 
 	# 3 - Description
 
 	if not ch_description:
 		newdata=newdata+build_efi_elo_Description(curr_description)
 	if ch_description:
+		if debug:
+			print("CHANGING DESCRIPTION")
 		newdata=newdata+build_efi_elo_Description(description)
 
 	# 4 - FilePathList
@@ -798,12 +839,13 @@ def main_EditFwBootEntry(
 	# 5 - OptionalData
 
 	if not ch_metadata:
-		newdata=newdata+curr_opdata
+		newdata=newdata+data_original[fpl_end:]
 	if ch_metadata:
+		if debug:
+			print("CHANGING METADATA")
 		newdata=newdata+metadata
 
 	if not isinstance(fun_SetFwEnvVarExW,Callable):
-
 		print(
 			"NEW DATA:",
 			parse_efi_EFI_LOAD_OPTION(
@@ -811,16 +853,20 @@ def main_EditFwBootEntry(
 				name=boot_entry
 			)
 		)
-
 		return False
 
+	step=step+1
 	if not write_efi_variable(
 			fun_SetFwEnvVarExW,
 			boot_entry,
 			newdata,
 			debug=debug
 		):
-
+		if detailed_output:
+			return return_result(
+				f"Failed to write the new data to {boot_entry}",
+				prefix=fn
+			)
 		return False
 
 	if detailed_output:
@@ -828,7 +874,6 @@ def main_EditFwBootEntry(
 			"Success",
 			prefix=fn
 		)
-
 	return True
 
 ###############################################################################
@@ -861,16 +906,15 @@ if __name__=="__main__":
 	fun_EFIVarGetter=import_GetFwEnVarW()
 	fun_EFIVarSetter=import_SetFwEnvVarExW()
 
-
-	r=main_EditFwBootEntry(fun_EFIVarGetter,fun_EFIVarSetter,"Boot0000",description="Yes",detailed_output=True)
-	print("d",r)
-
-	exit()
+	# r=main_EditFwBootEntry(fun_EFIVarGetter,fun_EFIVarSetter,"Boot0000",description="Yes",detailed_output=True)
+	# print("d",r)
+	# exit()
 
 	# Parameters
 
 	the_path="\\EFI\\Boot\\systemd-boot-x64.efi"
-	the_desc="SystemD Boot (pure bcdedit with Metadata)"
+	the_desc="SystemD Boot"
+	the_metadata=b"Installed using WUEFI"
 	set_bootnext=True
 	set_bootfirst=True
 
@@ -886,6 +930,6 @@ if __name__=="__main__":
 		set_BootOrder_addfirst=set_bootfirst,
 		debug=True,
 		detailed_output=True,
-		metadata=b"Installed using WUEFI"
+		metadata=the_metadata
 	)
 	print("\nRESULT:",result)
