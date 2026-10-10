@@ -72,38 +72,50 @@ def return_result(
 
 	return tuple(payload)
 
-def is_uint8(data:Optional[Any])->bool:
+def is_uint8(data:Optional[Any],inc_zero:bool=False)->bool:
 	if not isinstance(data,int):
 		return False
 	if not data>-1:
 		return False
+	if not inc_zero:
+		if data==0:
+			return False
 	if not data<_UINT8_MAX:
 		return False
 	return True
 
-def is_uint16(data:Optional[Any])->bool:
+def is_uint16(data:Optional[Any],inc_zero:bool=False)->bool:
 	if not isinstance(data,int):
 		return False
 	if not data>-1:
 		return False
+	if not inc_zero:
+		if data==0:
+			return False
 	if not data<_UINT16_MAX:
 		return False
 	return True
 
-def is_uint32(data:Optional[Any])->bool:
+def is_uint32(data:Optional[Any],inc_zero:bool=False)->bool:
 	if not isinstance(data,int):
 		return False
 	if not data>-1:
 		return False
+	if not inc_zero:
+		if data==0:
+			return False
 	if not data<_UINT32_MAX:
 		return False
 	return True
 
-def is_uint64(data:Optional[Any])->bool:
+def is_uint64(data:Optional[Any],inc_zero:bool=False)->bool:
 	if not isinstance(data,int):
 		return False
 	if not data>-1:
 		return False
+	if not inc_zero:
+		if data==0:
+			return False
 	if not data<_UINT64_MAX:
 		return False
 	return True
