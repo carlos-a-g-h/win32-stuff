@@ -638,11 +638,8 @@ def cmd_fw_do_modify_addfirst(
 			_ID_FWBOOTMGR,
 			"displayorder"
 	]
-
 	command.extend(tgtlist)
-
 	command.append("/addfirst")
-
 	result_subproc=util_subproc(
 		command,
 		verbose=debug,
@@ -687,19 +684,19 @@ def cmd_fw_do_modify_addfirst_force(
 	if (fwdo is None) or (not isinstance(fwdo,str)):
 		return []
 	fwdo_list=fwdo.split(sep=" ")
-	if util_filter_identifier_list(
+	if not util_filter_identifier_list(
 			fwdo_list,
 			debug=debug
 		):
 		return []
 
-	fwdo_list_new=[]
-	for identifier in tgtlist:
-		fwdo_list_new.append(identifier)
-	fwdo_list_new.extend(fwdo_list)
+	tmp=[]
+	tmp.extend(tgtlist)
+	tmp.extend(fwdo_list)
 
-	fwdo_list_new_verified=util_filter_identifier_list(
-		fwdo_list_new,return_data=True,
+	fwdo_list_new=util_filter_identifier_list(
+		tmp,
+		return_data=True,
 		debug=debug
 	)
 
@@ -708,7 +705,7 @@ def cmd_fw_do_modify_addfirst_force(
 			_ID_FWBOOTMGR,
 			"displayorder"
 	]
-	command.extend(fwdo_list_new_verified)
+	command.extend(fwdo_list_new)
 	result_subproc2=util_subproc(
 		command,
 		verbose=debug,
