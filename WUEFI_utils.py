@@ -5,10 +5,10 @@
 from pathlib import Path,WindowsPath
 from random import randint
 from subprocess import run as sub_run,CompletedProcess
-from typing import Any,Callable,Mapping,Optional,Union
+from typing import Any,Mapping,Optional,Union
 
-import ctypes
-from ctypes import wintypes,WinError,get_last_error
+# import ctpypes
+# from ctypes import wintypes,WinError,get_last_error
 
 from WUEFI_symbols import (
 
@@ -395,11 +395,11 @@ def split_line_into_kv(
 def subproc(
 		command:list,
 		verbose:bool=False,
-		test:bool=False
-	):
+		test:bool=False,
+		encoding:str="oem"
+	)->Union[bool,tuple]:
 
 	print("RUN:",command)
-
 	if test:
 		print(
 			"NOT RUNNING THE COMMAND,"
@@ -409,7 +409,8 @@ def subproc(
 
 	proc:CompletedProcess=sub_run(
 		command,
-		capture_output=True,encoding="oem"
+		capture_output=True,
+		encoding=encoding
 	)
 	result_code=proc.returncode
 	result_stdout:Optional[str]=fix_str(
@@ -442,67 +443,6 @@ def subproc(
 		result_stdout,
 		result_stderr
 	)
-def get_fwtype(
-		fun_GetFirmwareType:Callable,
-		assertion:bool=True
-	)->Optional[int]:
-
-	# Returns the firmware type as an int
-
-	res_dword=wintypes.DWORD()
-	if not fun_GetFirmwareType(
-			ctypes.byref(res_dword)
-		):
-
-		err=get_last_error()
-		err_msg="Failed to determine the type of firmware"
-		if assertion:
-			raise WinError(err,err_msg)
-
-		print(err_msg)
-		return None
-
-	return res_dword.value
-
-###############################################################################
-
-# Misc functions
-
-def is_fwtype_uefi(
-		fun_GetFirmwareType:Callable,
-		assertion:bool=False
-	)->bool:
-
-	# Returns wether the system is UEFI booted
-
-	result=get_fwtype(
-		fun_GetFirmwareType,
-		assertion=assertion
-	)
-
-	if assertion:
-		if result==0:
-			raise Exception("Unknown firmware type")
-
-	return (result==2)
-
-def is_fwtype_legacy(
-		fun_GetFirmwareType:Callable,
-		assertion:bool=False
-	)->bool:
-
-	# Returns wether the system is Legacy booted
-
-	result=get_fwtype(
-		fun_GetFirmwareType,
-		assertion=assertion
-	)
-
-	if assertion:
-		if result==0:
-			raise Exception("Unknown firmware type")
-
-	return (result==1)
 
 def gen_str_BootNNNN(
 		already_exist:Union[tuple,list]=[],

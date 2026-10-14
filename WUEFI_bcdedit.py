@@ -8,11 +8,12 @@ from WUEFI_symbols import (
 )
 
 from WUEFI_utils import (
+	is_guid,
 	fix_str as util_fix_str,
-	is_guid as is_guid,
-	subproc as util_subproc,
 	split_line_into_kv as util_split_line_into_kv,
 )
+
+from WUEFI_utils_windows import wsubproc as util_subproc
 
 # IMPORTANT NOTE:
 # BCDEDIT's usage throughout this specific module will focus only on working
