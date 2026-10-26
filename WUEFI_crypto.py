@@ -1,14 +1,26 @@
 #!/usr/bin/python3
 
+from sys import platform as sys_platform
+
 from pathlib import Path
 from typing import Optional,Union
 from uuid import UUID
 
 from WUEFI_symbols import _EFI_CERT_X509_GUID
-from WUEFI_utils import subproc as util_suproc,is_guid as util_guid
-# from WUEFI_utils_windows import subproc as util_suproc
+from WUEFI_utils import is_guid as util_guid
 
-def openssl_request_rsa_keypai_with_x509_csr(
+# NOTE:
+# I am only doing this because I am not always working from Windows, also btw,
+# the SBSIGN tools are natively Linux only
+
+if sys_platform in ("linux","linux2"):
+	from WUEFI_utils import subproc as util_subproc
+if sys_platform=="win32":
+	from WUEFI_utils_windows import wsubproc as util_subproc
+
+# OpenSSL Commands
+
+def openssl_request_rsa_keypair_with_x509_csr(
 		outdir:Path,
 		subj_name:str="/CN=Credentials Made Using WUEFI/",
 		key_stem:str="myrsa",
@@ -41,7 +53,7 @@ def openssl_request_rsa_keypai_with_x509_csr(
 			"-nodes"
 		]
 
-	result=util_suproc(
+	result=util_subproc(
 		command,
 		verbose=debug,
 		encoding=None
@@ -58,6 +70,8 @@ def openssl_request_rsa_keypai_with_x509_csr(
 	#   Absolute Path to the Private RSA key,
 	#   Absolute Path to the Public RSA key
 	# )
+# NOTE:
+# I am only doing this because I am not always on Windows
 
 	return (
 		0,
@@ -96,7 +110,7 @@ def openssl_x509_convert_pem_to_der(
 			"-out",str(fpath_der_ok)
 		]
 
-	result=util_suproc(
+	result=util_subproc(
 		command,
 		verbose=debug,
 		encoding=None
@@ -172,9 +186,17 @@ def build_esl_from_a_x509_der(
 
 if __name__=="__main__":
 
+	# NOTE:
+	# This test has two main parts
+	# THe first part consists in creating all fo the necessary credentials related
+	# to UEFI certificates: the private key, the PEM public key, the DER cert,
+	# and the ESL file, which is required by some vendors
+	# The second part can only run on Linux, check below for more details
+
 	from sys import argv
 
 	from WUEFI_symbols import _GUID_MIN
+	from WUEFI_crypto_sbsign import sign_image as sbsign
 
 	epoint=Path(argv[0])
 	outdir_tests=epoint.parent.joinpath("tests")
@@ -182,20 +204,59 @@ if __name__=="__main__":
 
 	debugging=True
 
-	res1=openssl_request_rsa_keypai_with_x509_csr(outdir_tests,key_stem="testdb",debug=debugging)
+	res1=openssl_request_rsa_keypair_with_x509_csr(outdir_tests,key_stem="testdb",debug=debugging)
 	if res1[0]==-1:
 		print("ERROR:",res1)
-		exit()
+		exit(1)
 
-	res2=openssl_x509_convert_pem_to_der(res1[2],debug=debugging)
+	_,fpath_private_key,fpath_public_key=res1
 
-	print("PRIV KEY:",res1[1])
-	print("PUBL KEY:",res1[2])
-	print("DER CERT:",res2)
+	fpath_cert_der=openssl_x509_convert_pem_to_der(fpath_public_key,debug=debugging)
 
-	res3=build_esl_from_a_x509_der(res2,UUID(_GUID_MIN),debug=debugging)
+	print("PRIV KEY:",fpath_private_key)
+	print("PUBL KEY:",fpath_public_key)
+	print("DER CERT:",fpath_cert_der)
+
+	res3=build_esl_from_a_x509_der(fpath_cert_der,UUID(_GUID_MIN),debug=debugging)
 	if res3 is None:
 		print("ERROR: failed to create ESL file")
-		exit()
+		exit(1)
 
 	print("ESL FILE:",res3)
+
+	if sys_platform not in ("linux","linux2"):
+		print("Stopping this test right here (if you don't know why, read the source code)")
+		exit(0)
+
+	# NOTE:
+
+	# This part of the test can only be ran on Linux, because SBVERIFY (which is
+	# part of the SBSIGN project) is natively available natively only on Linux
+	# systems
+
+	# We basically take the previously created private key and its corresponding
+	# DER certificate and we use a (preferrably unsigned) EFI file to sign it
+	# using the signer in WUEFI_crypto_sbsign. Then we use an actual copy of
+	# SBVERIFY to check if the resulting signed file is correct
+
+	# In order for this part of the test to work, ya need to install sbsign-tools
+	# on whatever distro you're using
+
+	efi_file_str="/media/root/02FE-9983/EFI/Boot/grub2.bootx64.efi"
+
+	efi_file=Path(efi_file_str)
+
+	efi_file_signed=sbsign(fpath_private_key,fpath_cert_der,efi_file)
+
+	r=util_subproc([
+		"sbverify",
+			"--cert",str(fpath_public_key),
+			str(efi_file_signed)
+	])
+	if not r[0]==0:
+		print("TEST FAILED!")
+		exit(1)
+
+	print(r[1])
+
+	print("SIGNED FILE:",r)

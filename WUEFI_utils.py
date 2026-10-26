@@ -396,7 +396,7 @@ def subproc(
 		command:list,
 		verbose:bool=False,
 		test:bool=False,
-		encoding:str="oem"
+		encoding:Optional[str]=None
 	)->Union[bool,tuple]:
 
 	print("RUN:",command)
