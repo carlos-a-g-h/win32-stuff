@@ -289,6 +289,25 @@ def fix_path(
 
 	return path_new.absolute()
 
+def fix_path_out(
+		path_out:Path,
+		backup_fname:str,
+		debug:bool=False
+	)->Optional[Path]:
+
+	path_out_ok=path_out.absolute()
+	if not path_out_ok.parent.exists():
+		if debug:
+			raise Exception("Does not exist:"+str(path_out_ok.parent))
+		return None
+
+	path_out_ok=path_out.resolve()
+
+	if path_out_ok.is_dir():
+		return path_out_ok.joinpath(backup_fname)
+
+	return path_out_ok
+
 def get_next_hex_char(ch:str)->str:
 
 	hex_chars="0123456789abcdef"

@@ -1,22 +1,141 @@
 #!/usr/bin/python3
 
-from sys import platform as sys_platform
+# Cryptographic functionalities
 
+# Dependencies (python 3.9):
+# pycryptodome==3.2.3
+
+# Dependencies (python 3.14):
+# pycryptodome==4.2.0
+
+# NOTE:
+# All cryptographic functionality is centered around x509 RSA key pairs, DER
+# certificates and EFI file signing
+
+from datetime import datetime,timedelta,timezone
 from pathlib import Path
+import secrets
+from sys import platform as sys_platform
 from typing import Optional,Union
 from uuid import UUID
 
+# from Crypto.IO import PEM
+# from asn1crypto import keys, pem, x509
+from asn1crypto import core as asn1c_core
+from asn1crypto import keys as asn1c_keys
+# from asn1crypto import pem as a1snc_pem
+from asn1crypto import x509 as asn1c_x509
+from asn1crypto.x509 import Certificate as x509_Certificate
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from Crypto.PublicKey.RSA import RsaKey
+from Crypto.Signature import pkcs1_15
+# from Crypto.Util.asn1 import DerSequence
+
+from WUEFI_crypto_sbsign import main as sbsign
 from WUEFI_symbols import _EFI_CERT_X509_GUID
 from WUEFI_utils import is_guid as util_guid
-
-# NOTE:
-# I am only doing this because I am not always working from Windows, also btw,
-# the SBSIGN tools are natively Linux only
+from WUEFI_utils import fix_path_out
 
 if sys_platform in ("linux","linux2"):
 	from WUEFI_utils import subproc as util_subproc
 if sys_platform=="win32":
 	from WUEFI_utils_windows import wsubproc as util_subproc
+
+# Return Types
+
+_RTYPE_RAW="ReturnType_Raw"
+_RTYPE_PATH="ReturnType_Path"
+_RTYPE_ASN1="ReturnType_Asn1Crypto"
+_RTYPE_PYCD="ReturnType_PyCryptodome"
+
+###############################################################################
+
+# Utils
+
+def read_tlv(
+		data:bytes,
+		off:int,
+		debug:bool=False
+	)->Optional[tuple]:
+
+	tag=data[off]
+	offset=off+1
+	size=data[offset]
+	offset=offset+1
+
+	if size & 0x80:
+		count=size & 0x7F
+		if count==0:
+			m="Indefinite length is not valid DER"
+			if debug:
+				raise Exception(m)
+			print(m)
+			return None
+
+		if offset+count>len(data):
+			m="Truncated DER length"
+			if debug:
+				raise Exception(m)
+			print(m)
+			return None
+
+		size=int.from_bytes(
+			data[offset:offset+count],
+			byteorder="big"
+		)
+		offset=offset+count
+
+	end=offset+size
+	if end>len(data):
+		msg="Truncated DER data"
+		if debug:
+			raise ValueError(msg)
+		return None
+
+	result=(tag,data[offset:end],end)
+
+	# if debug:
+	# 	print("read_tlv():",result)
+
+	return result
+
+def is_rsa_match(
+		fpath_pvtkey:Path,
+		fpath_pubkey:Path,
+		debug:bool=False
+	)->bool:
+
+	obj_pvtkey:Optional[RsaKey]=None
+	obj_pvtkey:Optional[RsaKey]=None
+	try:
+		obj_pvtkey=RSA.import_key(fpath_pvtkey.read_bytes())
+		obj_pubkey=RSA.import_key(fpath_pubkey.read_bytes())
+
+	except Exception as exc:
+		if debug:
+			raise exc
+
+		print(exc)
+		return False
+
+	print(type(obj_pubkey),type(obj_pvtkey))
+
+	result=(
+		obj_pvtkey.n==obj_pubkey.n
+		and obj_pvtkey.e==obj_pubkey.e
+	)
+
+	if debug:
+		print(
+			fpath_pvtkey.name,":",
+			fpath_pubkey.name,":",
+			result
+		)
+
+	return result
+
+###############################################################################
 
 # OpenSSL Commands
 
@@ -36,8 +155,8 @@ def openssl_request_rsa_keypair_with_x509_csr(
 	# The resulting files are stored inside the given output directory and named
 	# according to teh given stem
 
-	fpath_rsa_key:Path=outdir.joinpath(f"{key_stem}.key")
-	fpath_rsa_pem:Path=outdir.joinpath(f"{key_stem}.pem")
+	fpath_pvtkey:Path=outdir.joinpath(f"{key_stem}.key")
+	fpath_pubkey:Path=outdir.joinpath(f"{key_stem}.pem")
 
 	command=[
 		"openssl",
@@ -48,15 +167,14 @@ def openssl_request_rsa_keypair_with_x509_csr(
 			"-sha256",
 			"-days",str(expir_years),
 			"-subj",subj_name,
-			"-keyout",str(fpath_rsa_key.absolute()),
-			"-out",str(fpath_rsa_pem.absolute()),
+			"-keyout",str(fpath_pvtkey.absolute()),
+			"-out",str(fpath_pubkey.absolute()),
 			"-nodes"
 		]
 
 	result=util_subproc(
 		command,
 		verbose=debug,
-		encoding=None
 	)
 	ok=(result[0]==0)
 	if confirm_only:
@@ -70,50 +188,46 @@ def openssl_request_rsa_keypair_with_x509_csr(
 	#   Absolute Path to the Private RSA key,
 	#   Absolute Path to the Public RSA key
 	# )
-# NOTE:
-# I am only doing this because I am not always on Windows
+
+	# NOTE:
+	# I am only doing this because I am not always on Windows
 
 	return (
 		0,
-		fpath_rsa_key.absolute(),
-		fpath_rsa_pem.absolute()
+		fpath_pvtkey.absolute(),
+		fpath_pubkey.absolute()
 	)
 
-def openssl_x509_convert_pem_to_der(
-		fpath_pem:Path,
+def openssl_pkey_extract_public_key(
+		fpath_pvtkey:Path,
+		fpath_out:Optional[Path],
 		confirm_only:bool=False,
-		debug:bool=False
+		debug:bool=False,
 	)->Union[bool,Optional[Path]]:
 
-	# Uses OpenSSL's x509 command to convert a PEM key file into DER format
+	# Uses OpenSSL's PKEY command to extract the public key from the private key
 
-	# NOTE:
-	# The resulting file will be stored in the same directory as the given
-	# PEM file
-
-	fpath_pem_ok:Optional[Path]=None
-	is_abs=fpath_pem.is_absolute()
-	if is_abs:
-		fpath_pem_ok=fpath_pem
-	if not is_abs:
-		fpath_pem_ok=fpath_pem.absolute()
-
-	stem=fpath_pem_ok.stem
-	outdir=fpath_pem_ok.parent
-	fpath_der_ok=outdir.joinpath(f"{stem}.der")
+	fpath_pubkey:Optional[Path]=fix_path_out(
+		fpath_out,
+		f"{fpath_pvtkey.stem}.pem",
+		debug=debug
+	)
+	if fpath_pubkey is None:
+		if confirm_only:
+			return False
+		return None
 
 	command=[
 		"openssl",
-			"x509",
-			"-in",str(fpath_pem_ok),
-			"-outform","DER",
-			"-out",str(fpath_der_ok)
-		]
+			"pkey"
+			"-in",str(fpath_pvtkey),
+			"-pubout",
+			"-out",str(fpath_pubkey)
+	]
 
 	result=util_subproc(
 		command,
 		verbose=debug,
-		encoding=None
 	)
 	ok=(result[0]==0)
 	if confirm_only:
@@ -122,11 +236,227 @@ def openssl_x509_convert_pem_to_der(
 	if not ok:
 		return None
 
-	return fpath_der_ok
+	return fpath_pubkey
 
-def build_esl_from_a_x509_der(
-		fpath_der:Path,
+def openssl_x509_convert_pem_to_der(
+		fpath_pubkey:Path,
+		fpath_out:Optional[Path]=None,
+		confirm_only:bool=False,
+		debug:bool=False,
+	)->Union[bool,Optional[Path]]:
+
+	# Uses OpenSSL's x509 command to convert a PEM key file into DER format
+
+	# NOTE:
+	# The resulting file will be stored in the same directory as the given
+	# PEM file
+
+	fpath_certder:Optional[Path]=fix_path_out(
+		fpath_out,
+		f"{fpath_pubkey.stem}.der",
+		debug=debug
+	)
+	if fpath_certder is None:
+		if confirm_only:
+			return False
+		return None
+
+	command=[
+		"openssl",
+			"x509",
+			"-in",str(fpath_pubkey.absolute()),
+			"-outform","DER",
+			"-out",str(fpath_certder)
+		]
+
+	result=util_subproc(
+		command,
+		verbose=debug,
+	)
+	ok=(result[0]==0)
+	if confirm_only:
+		return ok
+
+	if not ok:
+		return None
+
+	return fpath_certder
+
+def openssl_x509_read_certder(
+		fpath_certder:Path,
+		confirm_only:bool=False,
+		debug:bool=False
+	)->Union[bool,tuple]:
+
+	# Uses OpenSSL's x509 command to parse a DER Certificate
+	# This can be used to confirm the validity of a DER Certificate
+
+	# openssl x509 -inform DER -in "certificate.der" -noout -text
+
+	command=[
+		"openssl",
+			"x509",
+			"-inform","DER",
+			"-in",str(fpath_certder.absolute()),
+			"-noout",
+			"-text"
+	]
+
+	result=util_subproc(
+		command,
+		verbose=debug,
+	)
+	ok=(result[0]==0)
+	if confirm_only:
+		return ok
+
+	return result
+
+###############################################################################
+
+# Pure python
+
+def from_x509_keypair_make_certder(
+		fpath_pvtkey:Path,
+		fpath_pubkey:Optional[Path]=None,
+		fpath_out:Optional[Path]=None,
+		time_date_start:Optional[datetime]=None,
+		time_duration_days:int=365,
+		issuer:str="WUEFI",
+		duration:int=365,
+		debug:bool=False,
+		return_type:Optional[str]=_RTYPE_ASN1
+	)->Optional[Union[bool,bytes,Path,x509_Certificate]]:
+
+	# Creates a self-signed x509 self signed certificate
+
+	obj_pvtkey:RsaKey=RSA.import_key(
+		fpath_pvtkey.read_bytes()
+	)
+
+	obj_pubkey:Optional[RsaKey]=None
+	has_pubkey=isinstance(fpath_pubkey,Path)
+	if has_pubkey:
+		obj_pubkey=RSA.import_key(fpath_pubkey.read_bytes())
+		if not (
+				obj_pvtkey.n==obj_pubkey.n and
+				obj_pvtkey.e==obj_pubkey.e
+			):
+			m="The provided private key does not match with the provided public key"
+			if debug:
+				raise Exception(m)
+			print(m)
+			return None
+
+	if not has_pubkey:
+		obj_pubkey=obj_pvtkey.public_key()
+
+	fpath_certder:Optional[Path]=None
+
+	return_type_ok:Optional[str]=None
+
+	if return_type==_RTYPE_PATH or isinstance(fpath_out,Path):
+		return_type_ok=return_type
+		fname=".der"
+		if has_pubkey:
+			fname=f"{fpath_pubkey.stem}{fname}"
+		if not has_pubkey:
+			fname=f"{fpath_pvtkey.stem}{fname}"
+		fpath_certder=fix_path_out(
+			fpath_out,
+			f"{fpath_pubkey.stem}.der",
+			debug=False
+		)
+		if fpath_certder is None:
+			return None
+
+	spki_der = obj_pubkey.public_key().export_key(format="DER")
+	spki = asn1c_keys.PublicKeyInfo.load(spki_der)
+
+	# name = asn1c_x509.Name.build({"common_name": "example.com"})
+	name = asn1c_x509.Name.build({"common_name": issuer})
+
+	date_start:Optional[datetime]=None
+	ok=isinstance(time_date_start,datetime)
+	if ok:
+		date_start=time_date_start
+	if not ok:
+		date_start=datetime.now(timezone.utc).replace(microsecond=0)
+
+	extensions=[
+		asn1c_x509.Extension({
+			"extn_id": "basic_constraints",
+			"critical": True,
+			"extn_value": asn1c_x509.BasicConstraints({"ca": False}),
+		}),
+		asn1c_x509.Extension({
+			"extn_id": "key_usage",
+			"critical": True,
+			"extn_value": asn1c_x509.KeyUsage({"digital_signature", "key_encipherment"}),
+		}),
+		asn1c_x509.Extension({
+			"extn_id": "extended_key_usage",
+			"extn_value": asn1c_x509.ExtKeyUsageSyntax(["server_auth"]),
+		}),
+		# asn1c_x509.Extension({
+		# 	"extn_id": "subject_alt_name",
+		# 	"extn_value": asn1c_x509.GeneralNames([
+		# 		asn1c_x509.GeneralName(
+		# 			name="dns_name",
+		# 			value="example.com"
+		# 		),
+		# 	]),
+		# })
+	]
+
+	signature_algorithm = {
+		"algorithm": "sha256_rsa",
+		"parameters":asn1c_core.Null()
+	}
+
+	tbs = asn1c_x509.TbsCertificate({
+		"version": "v3",
+		"serial_number": secrets.randbits(159) or 1,
+		"signature": signature_algorithm,
+		"issuer": name,
+		"validity": {
+			"not_before": {"utc_time": date_start},
+			"not_after": {"utc_time": date_start + timedelta(days=365)},
+			# "not_before": {"utc_time": now},
+			# "not_after": {"utc_time": now + datetime.timedelta(days=365)},
+		},
+		"subject": name,
+		"subject_public_key_info": spki,
+		"extensions": extensions,
+	})
+
+	signature = pkcs1_15.new(obj_pvtkey).sign(SHA256.new(tbs.dump()))
+
+	cert:x509_Certificate = x509_Certificate({
+		"tbs_certificate": tbs,
+		"signature_algorithm": signature_algorithm,
+		"signature_value": signature,
+	})
+
+	if return_type_ok is None:
+		return_type_ok=return_type
+
+	if return_type_ok==_RTYPE_ASN1:
+		return cert
+
+	if return_type_ok==_RTYPE_RAW:
+		return cert.dump()
+
+	if return_type_ok==_RTYPE_PATH:
+		fpath_certder.write_bytes(cert.dump())
+		return fpath_certder
+
+	return True
+
+def from_x509_certder_make_esl(
+		fpath_certder:Path,
 		owner_guid:Union[str,UUID],
+		fpath_out:Optional[Path]=None,
 		confirm_only:bool=False,
 		debug:bool=False
 	)->Union[bool,Optional[Path]]:
@@ -152,7 +482,7 @@ def build_esl_from_a_x509_der(
 
 	cert_type=UUID(_EFI_CERT_X509_GUID)
 
-	content_der=fpath_der.read_bytes()
+	content_der=fpath_certder.read_bytes()
 
 	owner_guid_as_bytes=owner_guid_ok.bytes_le
 
@@ -173,9 +503,9 @@ def build_esl_from_a_x509_der(
 		+ content_der
 	)
 
-	stem=fpath_der.stem
+	stem=fpath_certder.stem
 
-	fpath_esl=fpath_der.parent.joinpath(f"{stem}.esl")
+	fpath_esl=fpath_certder.parent.joinpath(f"{stem}.esl")
 
 	fpath_esl.write_bytes(esl_content)
 
@@ -184,79 +514,193 @@ def build_esl_from_a_x509_der(
 
 	return fpath_esl
 
-if __name__=="__main__":
+def from_x509_certder_get_pem(
+		fpath_certder:Path,
+		fpath_pubkey:Optional[Path]=None,
+		debug=False
+	)->Union[bool,Optional[RsaKey]]:
+
+	# Given an x509 DER encoded certificate, it extracts the public key (PEM)
+	# from it, returning an pycryptodome RsaKey object holding the PEM key
 
 	# NOTE:
-	# This test has two main parts
-	# THe first part consists in creating all fo the necessary credentials related
-	# to UEFI certificates: the private key, the PEM public key, the DER cert,
-	# and the ESL file, which is required by some vendors
-	# The second part can only run on Linux, check below for more details
+	# If you provide a public key as an argument, this function will compare that
+	# public key with the piblic key that was extracted from the provided DER
+	# certificate, in this case, it will return a boolean
 
-	from sys import argv
+	compare=isinstance(fpath_pubkey,Path)
+	if compare:
+		compare=fpath_pubkey.is_file()
 
-	from WUEFI_symbols import _GUID_MIN
-	from WUEFI_crypto_sbsign import sign_image as sbsign
+	readres=read_tlv(fpath_certder.read_bytes(),0,debug=debug)
+	if readres is None:
+		return None
+	tag=readres[0]
+	cert_content=readres[1]
+	if not tag==0x30:
+		m="Not a DER X.509 Certificate"
+		if debug:
+			raise Exception(m)
+		print(m)
+		if compare:
+			return False
+		return None
 
-	epoint=Path(argv[0])
-	outdir_tests=epoint.parent.joinpath("tests")
-	outdir_tests.mkdir(exist_ok=True,parents=True)
+	readres=read_tlv(cert_content,0,debug=debug)
+	if readres is None:
+		return None
+	tag,tbs,_=readres
+	if not tag==0x30:
+		m="Invalid TBSCertificate"
+		if debug:
+			raise Exception(m)
+		print(m)
+		if compare:
+			return False
+		return None
 
-	debugging=True
+	offset=0
+	readres=read_tlv(tbs,offset,debug=debug)
+	if readres is None:
+		return None
+	tag,_,offset_next=readres
+	if tag==0xA0:
+		offset=offset_next
 
-	res1=openssl_request_rsa_keypair_with_x509_csr(outdir_tests,key_stem="testdb",debug=debugging)
-	if res1[0]==-1:
-		print("ERROR:",res1)
-		exit(1)
+	err=False
+	fields=[]
+	while offset<len(tbs):
+		readres=read_tlv(tbs,offset)
+		if readres is None:
+			err=True
+			break
 
-	_,fpath_private_key,fpath_public_key=res1
+		tag,value,offset_next=readres
+		fields.append((tag,value))
+		offset=offset_next
 
-	fpath_cert_der=openssl_x509_convert_pem_to_der(fpath_public_key,debug=debugging)
+	if err:
+		m="Loop fail"
+		if debug:
+			raise Exception(m)
+		print(m)
+		if compare:
+			return False
+		return None
 
-	print("PRIV KEY:",fpath_private_key)
-	print("PUBL KEY:",fpath_public_key)
-	print("DER CERT:",fpath_cert_der)
+	spki_index=-0
+	if fields[0][0]==0xA0:
+		spki_index=6
+	if fields[0][0]==0x02:
+		spki_index=5
+	if spki_index==0:
+		m="Unexpected first TBSCertificate field"
+		if debug:
+			raise Exception(m)
+		print(m)
+		if compare:
+			return False
+		return None
 
-	res3=build_esl_from_a_x509_der(fpath_cert_der,UUID(_GUID_MIN),debug=debugging)
-	if res3 is None:
-		print("ERROR: failed to create ESL file")
-		exit(1)
+	spki_tag,spki=fields[spki_index]
 
-	print("ESL FILE:",res3)
+	if not spki_tag==0x30:
+		m="Invalid SubjectPublicKeyInfo"
+		if debug:
+			raise Exception(m)
+		print(m)
+		if compare:
+			return False
+		return None
 
-	if sys_platform not in ("linux","linux2"):
-		print("Stopping this test right here (if you don't know why, read the source code)")
-		exit(0)
+	readres=read_tlv(spki,0)
+	if readres is None:
+		return None
+	bit_str_tlv_end=readres[2]
 
-	# NOTE:
+	readres=read_tlv(spki,bit_str_tlv_end)
+	if readres is None:
+		return None
+	bit_tag=readres[0]
+	bit_str=readres[1]
+	if bit_tag!=0x03 or not bit_str or bit_str[0]!=0:
+		m="Invalid public-key BIT STRING"
+		if debug:
+			raise Exception(m)
+		print(m)
+		if compare:
+			return False
+		return None
 
-	# This part of the test can only be ran on Linux, because SBVERIFY (which is
-	# part of the SBSIGN project) is natively available natively only on Linux
-	# systems
+	pubkey1=RSA.import_key(bit_str[1:])
 
-	# We basically take the previously created private key and its corresponding
-	# DER certificate and we use a (preferrably unsigned) EFI file to sign it
-	# using the signer in WUEFI_crypto_sbsign. Then we use an actual copy of
-	# SBVERIFY to check if the resulting signed file is correct
+	if compare:
 
-	# In order for this part of the test to work, ya need to install sbsign-tools
-	# on whatever distro you're using
+		pubkey2=RSA.import_key(fpath_pubkey.read_bytes())
 
-	efi_file_str="/media/root/02FE-9983/EFI/Boot/grub2.bootx64.efi"
+		result=(
+			pubkey1.n==pubkey2.n
+			and pubkey1.e==pubkey2.e
+		)
 
-	efi_file=Path(efi_file_str)
+		if debug:
+			print(
+				fpath_certder.name,":CAME FROM:",
+				fpath_pubkey.name,":?",
+				result
+			)
 
-	efi_file_signed=sbsign(fpath_private_key,fpath_cert_der,efi_file)
+		return result
 
-	r=util_subproc([
-		"sbverify",
-			"--cert",str(fpath_public_key),
-			str(efi_file_signed)
-	])
-	if not r[0]==0:
-		print("TEST FAILED!")
-		exit(1)
+	return pubkey1
 
-	print(r[1])
+def sign_image(
+		fpath_pvtkey:Path,
+		fpath_certder:Path,
+		fpath_input:Path,
+		fpath_output:Optional[Path],
+		debug:bool=False,
+	)->Optional[Path]:
 
-	print("SIGNED FILE:",r)
+	fpath_out_ok=fix_path_out(
+		fpath_output,
+		f"{fpath_input.stem}.signed",
+		debug=debug
+	)
+	if fpath_out_ok is None:
+		return None
+
+	obj_pvtkey:Optional[RsaKey]=RSA.import_key(
+		fpath_pvtkey.read_bytes()
+	)
+	obj_pubkey=obj_pvtkey.public_key()
+
+	obj_pubkey_from_certder:Optional[RsaKey]=from_x509_certder_get_pem(
+		fpath_certder,
+		debug=debug
+	)
+	if not (
+			obj_pubkey.n==obj_pubkey_from_certder.n and
+			obj_pubkey.e==obj_pubkey_from_certder.e
+		):
+		msg="The provided certificate does not match the provided key"
+		if debug:
+			raise Exception(msg)
+
+		print(msg)
+		return None
+
+	if not sbsign(
+			fpath_pvtkey,
+			fpath_certder,
+			fpath_input,
+			fpath_out_ok
+		):
+		msg="Failed to sign the file"
+		if debug:
+			raise Exception(msg)
+
+		print(msg)
+		return None
+
+	return fpath_out_ok

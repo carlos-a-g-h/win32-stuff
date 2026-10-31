@@ -348,14 +348,12 @@ def make_pkcs7(
 		)
 	)
 
-def sign_image(
-		fpath_private_key: Path,
-		fpath_cert_der: Path,
-		fpath_input: Path,
-		fpath_output: Optional[Path]=None
-	) -> Union[bool,Optional[Path]]:
-
-	# outpath_provided=isinstance(fpath_output,Path)
+def main(
+		fpath_pvtkey:Path,
+		fpath_certder:Path,
+		fpath_input:Path,
+		fpath_output:Path,
+	)->bool:
 
 	data=bytearray(fpath_input.read_bytes())
 
@@ -365,19 +363,15 @@ def sign_image(
 	checksum_off,security_off,_,_=pe_layout(data)
 	image_digest = authenticode_sha256(data)
 
-	private_key=RSA.importKey(
-		fpath_private_key.read_bytes()
-	)
-
-	cert_der=fpath_cert_der.read_bytes()
+	certder=fpath_certder.read_bytes()
 
 	indirect_der, indirect_body = make_indirect_data(image_digest)
-	pkcs7 = make_pkcs7(
+	pkcs7=make_pkcs7(
 		indirect_der,
 		indirect_body,
-		cert_der,
-		asn1_x509.Certificate.load(cert_der),
-		private_key
+		certder,
+		asn1_x509.Certificate.load(certder),
+		RSA.importKey(fpath_pvtkey.read_bytes())
 	)
 
 	dw_length = 8 + len(pkcs7)
@@ -387,10 +381,8 @@ def sign_image(
 	cert_offset = len(data)
 	struct.pack_into("<II", data, security_off, cert_offset, len(entry))
 
-	output_path=fpath_input.parent.joinpath(f"{fpath_input}.signed")
-	output_path.write_bytes(data + entry)
-	return output_path
+	# output_path=fpath_input.parent.joinpath(f"{fpath_input}.signed")
+	fpath_output.write_bytes(data + entry)
+	# return fpath_output
 
-if __name__=="__main__":
-
-	pass
+	return True

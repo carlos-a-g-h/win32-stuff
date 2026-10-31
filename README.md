@@ -1,6 +1,6 @@
 # My Win32 stuff
 
-This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, or by subprocessing commandline programs that come by default on Windows
+This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, or by subprocessing commandline programs that are open source or come by default OOTB on Windows
 
 WARNING: Many of the modules and scripts here will require Admin privileges in order to work or privileges higher than that
 
