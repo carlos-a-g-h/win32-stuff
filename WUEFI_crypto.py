@@ -207,8 +207,8 @@ def openssl_pkey_extract_public_key(
 
 	# Uses OpenSSL's PKEY command to extract the public key from the private key
 
-	fpath_pubkey:Optional[Path]=fix_path_out(
-		fpath_out,
+	fpath_pubkey=fix_path_out(
+		fpath_pvtkey,fpath_out,
 		f"{fpath_pvtkey.stem}.pem",
 		debug=debug
 	)
@@ -252,7 +252,7 @@ def openssl_x509_convert_pem_to_der(
 	# PEM file
 
 	fpath_certder:Optional[Path]=fix_path_out(
-		fpath_out,
+		fpath_pubkey,fpath_out,
 		f"{fpath_pubkey.stem}.der",
 		debug=debug
 	)
@@ -260,6 +260,9 @@ def openssl_x509_convert_pem_to_der(
 		if confirm_only:
 			return False
 		return None
+
+	if fpath_certder.is_file():
+		fpath_certder.unlink()
 
 	command=[
 		"openssl",
@@ -274,12 +277,24 @@ def openssl_x509_convert_pem_to_der(
 		verbose=debug,
 	)
 	ok=(result[0]==0)
+	if debug:
+		if fpath_certder.is_file():
+			util_subproc(
+				[
+					"openssl",
+					"x509",
+					"-inform","DER",
+					"-in",str(fpath_certder),
+					"-noout",
+					"-text"
+				],
+				verbose=True
+			)
+
 	if confirm_only:
 		return ok
-
 	if not ok:
 		return None
-
 	return fpath_certder
 
 def openssl_x509_read_certder(
@@ -357,15 +372,17 @@ def from_x509_keypair_make_certder(
 
 	if return_type==_RTYPE_PATH or isinstance(fpath_out,Path):
 		return_type_ok=return_type
+		tmp:Optional[Path]=None
 		fname=".der"
 		if has_pubkey:
+			tmp=fpath_pubkey
 			fname=f"{fpath_pubkey.stem}{fname}"
 		if not has_pubkey:
+			tmp=fpath_pvtkey
 			fname=f"{fpath_pvtkey.stem}{fname}"
 		fpath_certder=fix_path_out(
-			fpath_out,
-			f"{fpath_pubkey.stem}.der",
-			debug=False
+			tmp,fpath_out,
+			fname,debug=False
 		)
 		if fpath_certder is None:
 			return None
@@ -466,11 +483,22 @@ def from_x509_certder_make_esl(
 	# NOTE:
 	# Some vendors/firmwares require the ESL)
 
+	fpath_esl:Optional[Path]=fix_path_out(
+		fpath_certder,
+		fpath_out,
+		f"{fpath_certder.stem}.esl",
+		debug=debug
+	)
+	if fpath_esl is None:
+		if confirm_only:
+			return False
+		return None
+
 	owner_guid_ok:Optional[UUID]=None
 	if isinstance(owner_guid,UUID):
 		owner_guid_ok=owner_guid
 	if isinstance(owner_guid,str):
-		if not util_guid(owner_guid,verbose=debug):
+		if not util_guid(owner_guid):
 			if confirm_only:
 				return False
 			return None
@@ -503,12 +531,7 @@ def from_x509_certder_make_esl(
 		+ content_der
 	)
 
-	stem=fpath_certder.stem
-
-	fpath_esl=fpath_certder.parent.joinpath(f"{stem}.esl")
-
 	fpath_esl.write_bytes(esl_content)
-
 	if confirm_only:
 		return True
 
@@ -663,7 +686,7 @@ def sign_image(
 	)->Optional[Path]:
 
 	fpath_out_ok=fix_path_out(
-		fpath_output,
+		fpath_input,fpath_output,
 		f"{fpath_input.stem}.signed",
 		debug=debug
 	)

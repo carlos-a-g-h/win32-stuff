@@ -290,10 +290,17 @@ def fix_path(
 	return path_new.absolute()
 
 def fix_path_out(
-		path_out:Path,
+		path_in:Path,
+		path_out:Optional[Path],
 		backup_fname:str,
 		debug:bool=False
 	)->Optional[Path]:
+
+	# Determines the output path
+
+	if path_out is None:
+
+		return path_in.parent.joinpath(backup_fname)
 
 	path_out_ok=path_out.absolute()
 	if not path_out_ok.parent.exists():
@@ -418,7 +425,7 @@ def subproc(
 		encoding:Optional[str]=None
 	)->Union[bool,tuple]:
 
-	print("RUN:",command)
+	print("\nRUN:",command)
 	if test:
 		print(
 			"NOT RUNNING THE COMMAND,"

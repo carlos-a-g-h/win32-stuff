@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 
-# THis test consists in creating credentials using pure python libraries and
-# them using real programs such as OpenSSL
+# This test consists in creating part of the necessary credentials using pure
+# python, verify each of them using OpenSSL, use the credentials to sign an
+# EFI file, and verify the signature of the signed file using SBVERIFY
 
 from pathlib import Path
 from sys import platform as sys_platform
@@ -21,17 +22,19 @@ if sys_platform in ("linux","linux2"):
 if sys_platform=="win32":
 	from WUEFI_utils_windows import wsubproc as util_subproc
 
-
 ###############################################################################
 
 running_on_windows=(sys_platform=="win32")
-test_dir_name=Path(sys_argv[0]).stem
-test_dir=Path(f"{test_dir_name}.results")
+test_stem=Path(sys_argv[0]).stem
+test_fname=Path(sys_argv[0]).name
+test_dir=Path(f"{test_stem}.results")
 test_dir.mkdir(exist_ok=True,parents=True)
 
 ###############################################################################
 
-debug=True
+# Test parameters
+
+debug_mode=True
 test_stem="Test"
 test_efi_file=Path("/media/root/02FE-9983/EFI/Boot/grub2.bootx64.efi")
 
@@ -41,7 +44,7 @@ result=openssl_request_rsa_keypair_with_x509_csr(
 	test_dir,
 	"/CN=WUEFI crypto tests/",
 	test_stem,
-	debug=debug
+	debug=debug_mode
 )
 assert result[0]==0
 
@@ -52,13 +55,13 @@ test_certder=from_x509_keypair_make_certder(
 	test_pvtkey,
 	test_pubkey,
 	fpath_out=test_dir.joinpath(f"{test_stem}.der"),
-	debug=debug,
+	debug=debug_mode,
 	return_type=_RTYPE_PATH
 )
 
 result=openssl_x509_read_certder(
 	test_certder,
-	debug=debug
+	debug=debug_mode
 )
 assert result[0]==0
 
@@ -67,20 +70,26 @@ test_efi_file_signed=sign_image(
 	test_certder,
 	test_efi_file,
 	test_dir.joinpath(f"{test_efi_file.stem}.SIGNED"),
-	debug=debug
+	debug=debug_mode
 )
 
 if running_on_windows:
 	print("Cannot continue test on Windows, run on Linux")
 	exit(0)
 
-# apt install -yy sbsigntool
+# NOTE:
+# sbsigntool and efitools must be installed
+# apt install -yy sbsigntool efitools
+
+# - Verify the signature within the signed EFI file
 
 result=util_subproc([
 	"sbverify",
 		"--cert",str(test_pubkey),
 		str(test_efi_file_signed)
-])
+	],
+	verbose=debug_mode
+)
 assert result[0]==0
 
-print("PASSED!")
+print(f"\n{test_fname}: PASSED")
