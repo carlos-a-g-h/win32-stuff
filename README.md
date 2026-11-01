@@ -1,6 +1,6 @@
 # My Win32 stuff
 
-This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, or by subprocessing commandline programs that come by default on Windows
+This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, or by subprocessing commandline programs that are open source or come by default OOTB on Windows
 
 WARNING: Many of the modules and scripts here will require Admin privileges in order to work or privileges higher than that
 
@@ -43,3 +43,5 @@ Lets you modify the EFI/UEFI firmware boot options. It works by using the Window
 [WUEFI_evars.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_evars.py), is the module that holds all of the functionality specific to EFI variables. It can be used as a command line utility for quick querying and (very) minimal editing of EFI variables by their BootNNNN naming scheme
 
 [WUEFI_bcdedit.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_bcdedit.py) has functions that run BCDEDIT commands that are specific for firmware boot entries
+
+[WUEFI_crypto.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_crypto.py) and [WUEFI_crypto_sbsign.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_crypto_sbsign.py) are cryptographic modules for the WUEFI project
