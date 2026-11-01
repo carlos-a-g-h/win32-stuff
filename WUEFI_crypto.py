@@ -3,9 +3,11 @@
 # Cryptographic functionalities
 
 # Dependencies (python 3.9):
+# asn1crypto==1.5.1
 # pycryptodome==3.2.3
 
 # Dependencies (python 3.14):
+# asn1crypto==1.5.1
 # pycryptodome==4.2.0
 
 # NOTE:
