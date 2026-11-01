@@ -371,7 +371,7 @@ def main(
 		indirect_body,
 		certder,
 		asn1_x509.Certificate.load(certder),
-		RSA.importKey(fpath_pvtkey.read_bytes())
+		RSA.import_key(fpath_pvtkey.read_bytes())
 	)
 
 	dw_length = 8 + len(pkcs7)

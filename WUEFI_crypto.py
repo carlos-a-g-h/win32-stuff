@@ -143,7 +143,7 @@ def openssl_request_rsa_keypair_with_x509_csr(
 		outdir:Path,
 		subj_name:str="/CN=Credentials Made Using WUEFI/",
 		key_stem:str="myrsa",
-		expir_years:int=10,
+		expir_days:int=3650,
 		debug:bool=False,
 		confirm_only:bool=False
 	)->Union[bool,tuple]:
@@ -155,7 +155,7 @@ def openssl_request_rsa_keypair_with_x509_csr(
 	# The resulting files are stored inside the given output directory and named
 	# according to teh given stem
 
-	fpath_pvtkey:Path=outdir.joinpath(f"{key_stem}.key")
+	fpath_pvtkey:Path=outdir.joinpath(f"{key_stem}.pvt.pem")
 	fpath_pubkey:Path=outdir.joinpath(f"{key_stem}.pem")
 
 	command=[
@@ -165,7 +165,7 @@ def openssl_request_rsa_keypair_with_x509_csr(
 			"-x509",
 			"-newkey","rsa:2048",
 			"-sha256",
-			"-days",str(expir_years),
+			"-days",str(expir_days),
 			"-subj",subj_name,
 			"-keyout",str(fpath_pvtkey.absolute()),
 			"-out",str(fpath_pubkey.absolute()),

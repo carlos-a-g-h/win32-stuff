@@ -1,8 +1,11 @@
 #!/usr/bin/python3
 
+# THis test consists in creating credentials using pure python libraries and
+# them using real programs such as OpenSSL
+
 from pathlib import Path
 from sys import platform as sys_platform
-
+from sys import argv as sys_argv
 
 from WUEFI_crypto import (
 
@@ -18,21 +21,21 @@ if sys_platform in ("linux","linux2"):
 if sys_platform=="win32":
 	from WUEFI_utils_windows import wsubproc as util_subproc
 
+
+###############################################################################
+
+running_on_windows=(sys_platform=="win32")
+test_dir_name=Path(sys_argv[0]).stem
+test_dir=Path(f"{test_dir_name}.results")
+test_dir.mkdir(exist_ok=True,parents=True)
+
 ###############################################################################
 
 debug=True
-
-running_on_windows=(sys_platform=="win32")
-
-test_dir=Path("test_results")
-
+test_stem="Test"
 test_efi_file=Path("/media/root/02FE-9983/EFI/Boot/grub2.bootx64.efi")
 
-test_stem="mytest"
-
 ###############################################################################
-
-test_dir.mkdir(exist_ok=True,parents=True)
 
 result=openssl_request_rsa_keypair_with_x509_csr(
 	test_dir,
@@ -75,7 +78,7 @@ if running_on_windows:
 
 result=util_subproc([
 	"sbverify",
-		"--cert",str(test_certder),
+		"--cert",str(test_pubkey),
 		str(test_efi_file_signed)
 ])
 assert result[0]==0
