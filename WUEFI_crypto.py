@@ -340,7 +340,6 @@ def from_x509_keypair_make_certder(
 		time_date_start:Optional[datetime]=None,
 		time_duration_days:int=365,
 		issuer:str="WUEFI",
-		duration:int=365,
 		debug:bool=False,
 		return_type:Optional[str]=_RTYPE_ASN1
 	)->Optional[Union[bool,bytes,Path,x509_Certificate]]:
@@ -389,7 +388,7 @@ def from_x509_keypair_make_certder(
 		if fpath_certder is None:
 			return None
 
-	spki_der = obj_pubkey.public_key().export_key(format="DER")
+	spki_der = obj_pubkey.export_key(format="DER")
 	spki = asn1c_keys.PublicKeyInfo.load(spki_der)
 
 	# name = asn1c_x509.Name.build({"common_name": "example.com"})
@@ -440,7 +439,7 @@ def from_x509_keypair_make_certder(
 		"issuer": name,
 		"validity": {
 			"not_before": {"utc_time": date_start},
-			"not_after": {"utc_time": date_start + timedelta(days=365)},
+			"not_after": {"utc_time": date_start + timedelta(days=time_duration_days)},
 			# "not_before": {"utc_time": now},
 			# "not_after": {"utc_time": now + datetime.timedelta(days=365)},
 		},
