@@ -25,7 +25,7 @@ from uuid import UUID
 # from asn1crypto import keys, pem, x509
 from asn1crypto import core as asn1c_core
 from asn1crypto import keys as asn1c_keys
-# from asn1crypto import pem as a1snc_pem
+from asn1crypto import pem as asn1c_pem
 from asn1crypto import x509 as asn1c_x509
 from asn1crypto.x509 import Certificate as x509_Certificate
 from Crypto.Hash import SHA256
@@ -102,40 +102,40 @@ def read_tlv(
 
 	return result
 
-def is_rsa_match(
-		fpath_pvtkey:Path,
-		fpath_pubkey:Path,
-		debug:bool=False
-	)->bool:
+# def is_rsa_match(
+# 		fpath_pvtkey:Path,
+# 		fpath_pubkey:Path,
+# 		debug:bool=False
+# 	)->bool:
 
-	obj_pvtkey:Optional[RsaKey]=None
-	obj_pvtkey:Optional[RsaKey]=None
-	try:
-		obj_pvtkey=RSA.import_key(fpath_pvtkey.read_bytes())
-		obj_pubkey=RSA.import_key(fpath_pubkey.read_bytes())
+# 	obj_pvtkey:Optional[RsaKey]=None
+# 	obj_pvtkey:Optional[RsaKey]=None
+# 	try:
+# 		obj_pvtkey=RSA.import_key(fpath_pvtkey.read_bytes())
+# 		obj_pubkey=RSA.import_key(fpath_pubkey.read_bytes())
 
-	except Exception as exc:
-		if debug:
-			raise exc
+# 	except Exception as exc:
+# 		if debug:
+# 			raise exc
 
-		print(exc)
-		return False
+# 		print(exc)
+# 		return False
 
-	print(type(obj_pubkey),type(obj_pvtkey))
+# 	print(type(obj_pubkey),type(obj_pvtkey))
 
-	result=(
-		obj_pvtkey.n==obj_pubkey.n
-		and obj_pvtkey.e==obj_pubkey.e
-	)
+# 	result=(
+# 		obj_pvtkey.n==obj_pubkey.n
+# 		and obj_pvtkey.e==obj_pubkey.e
+# 	)
 
-	if debug:
-		print(
-			fpath_pvtkey.name,":",
-			fpath_pubkey.name,":",
-			result
-		)
+# 	if debug:
+# 		print(
+# 			fpath_pvtkey.name,":",
+# 			fpath_pubkey.name,":",
+# 			result
+# 		)
 
-	return result
+# 	return result
 
 ###############################################################################
 
@@ -158,7 +158,7 @@ def openssl_request_rsa_keypair_with_x509_csr(
 	# according to teh given stem
 
 	fpath_pvtkey:Path=outdir.joinpath(f"{key_stem}.pvt.pem")
-	fpath_pubkey:Path=outdir.joinpath(f"{key_stem}.pem")
+	fpath_pemcert:Path=outdir.joinpath(f"{key_stem}.pem")
 
 	command=[
 		"openssl",
@@ -170,7 +170,7 @@ def openssl_request_rsa_keypair_with_x509_csr(
 			"-days",str(expir_days),
 			"-subj",subj_name,
 			"-keyout",str(fpath_pvtkey.absolute()),
-			"-out",str(fpath_pubkey.absolute()),
+			"-out",str(fpath_pemcert.absolute()),
 			"-nodes"
 		]
 
@@ -197,7 +197,7 @@ def openssl_request_rsa_keypair_with_x509_csr(
 	return (
 		0,
 		fpath_pvtkey.absolute(),
-		fpath_pubkey.absolute()
+		fpath_pemcert.absolute()
 	)
 
 def openssl_pkey_extract_public_key(
@@ -241,21 +241,21 @@ def openssl_pkey_extract_public_key(
 	return fpath_pubkey
 
 def openssl_x509_convert_pem_to_der(
-		fpath_pubkey:Path,
+		fpath_pemcert:Path,
 		fpath_out:Optional[Path]=None,
 		confirm_only:bool=False,
 		debug:bool=False,
 	)->Union[bool,Optional[Path]]:
 
-	# Uses OpenSSL's x509 command to convert a PEM key file into DER format
+	# Uses OpenSSL's x509 command to convert a PEM cert file into DER format
 
 	# NOTE:
 	# The resulting file will be stored in the same directory as the given
 	# PEM file
 
 	fpath_certder:Optional[Path]=fix_path_out(
-		fpath_pubkey,fpath_out,
-		f"{fpath_pubkey.stem}.der",
+		fpath_pemcert,fpath_out,
+		f"{fpath_pemcert.stem}.der",
 		debug=debug
 	)
 	if fpath_certder is None:
@@ -269,7 +269,7 @@ def openssl_x509_convert_pem_to_der(
 	command=[
 		"openssl",
 			"x509",
-			"-in",str(fpath_pubkey.absolute()),
+			"-in",str(fpath_pemcert.absolute()),
 			"-outform","DER",
 			"-out",str(fpath_certder)
 		]
@@ -339,12 +339,12 @@ def openssl_x509_convert_certder_to_pem(
 	# Uses OpenSSL's x509 command to parse a DER certificate and converts it into
 	# PEM format
 
-	fpath_pubkey:Optional[Path]=fix_path_out(
+	fpath_pemcert:Optional[Path]=fix_path_out(
 		fpath_certder,fpath_out,
 		f"{fpath_certder.stem}.from_certder.pem",
 		debug=debug
 	)
-	if fpath_pubkey is None:
+	if fpath_pemcert is None:
 		if confirm_only:
 			return False
 		return None
@@ -354,7 +354,7 @@ def openssl_x509_convert_certder_to_pem(
 			"-inform","DER",
 			"-in",str(fpath_certder),
 			"-outform","PEM",
-			"-out",str(fpath_pubkey),
+			"-out",str(fpath_pemcert),
 	]
 	result=util_subproc(
 		command,
@@ -368,16 +368,49 @@ def openssl_x509_convert_certder_to_pem(
 	if confirm_only:
 		return True
 
-	return fpath_pubkey
-
+	return fpath_pemcert
 
 ###############################################################################
 
 # Pure python
 
+def from_x509_pem_make_certder(
+		fpath_pemcert:Path,
+		fpath_out:Optional[Path]=None,
+		debug:bool=False
+	):
+
+	# Converts a PEM certificate into a DER certificate
+
+	fpath_dercert:Optional[Path]=fix_path_out(
+		fpath_pemcert,fpath_out,
+		f"{fpath_pemcert.stem}.der",
+		debug=debug
+	)
+	if fpath_dercert is None:
+		return None
+
+	block_type,_,raw_pemcert=asn1c_pem.unarmor(
+		fpath_pemcert.read_bytes()
+	)
+	if not block_type=="CERTIFICATE":
+		return None
+
+	pemcert:x509_Certificate=x509_Certificate.load(raw_pemcert)
+
+	if debug:
+		print(pemcert.subject)
+		print(pemcert.issuer)
+
+	fpath_dercert.write_bytes(
+		pemcert.dump(force=True)
+	)
+
+	return fpath_dercert
+
 def from_x509_keypair_make_certder(
 		fpath_pvtkey:Path,
-		fpath_pubkey:Optional[Path]=None,
+		fpath_pemcert:Optional[Path]=None,
 		fpath_out:Optional[Path]=None,
 		time_date_start:Optional[datetime]=None,
 		time_duration_days:int=365,
@@ -386,16 +419,22 @@ def from_x509_keypair_make_certder(
 		return_type:Optional[str]=_RTYPE_ASN1
 	)->Optional[Union[bool,bytes,Path,x509_Certificate]]:
 
-	# Creates a self-signed x509 self signed certificate
+	# Creates a self-signed x509 self signed certificate from scratch
+
+	# NOTE:
+	# The certificate created using this function is FROM SCRATCH, it doesn't
+	# encode a PEM cert into a DER cert like OpenSSL does. The DER certificate
+	# can be used to sign an EFI file for example, but when you run SBVERIFY,
+	# it blows the fuck up
 
 	obj_pvtkey:RsaKey=RSA.import_key(
 		fpath_pvtkey.read_bytes()
 	)
 
 	obj_pubkey:Optional[RsaKey]=None
-	has_pubkey=isinstance(fpath_pubkey,Path)
+	has_pubkey=isinstance(fpath_pemcert,Path)
 	if has_pubkey:
-		obj_pubkey=RSA.import_key(fpath_pubkey.read_bytes())
+		obj_pubkey=RSA.import_key(fpath_pemcert.read_bytes())
 		if not (
 				obj_pvtkey.n==obj_pubkey.n and
 				obj_pvtkey.e==obj_pubkey.e
@@ -418,8 +457,8 @@ def from_x509_keypair_make_certder(
 		tmp:Optional[Path]=None
 		fname=".der"
 		if has_pubkey:
-			tmp=fpath_pubkey
-			fname=f"{fpath_pubkey.stem}{fname}"
+			tmp=fpath_pemcert
+			fname=f"{fpath_pemcert.stem}{fname}"
 		if not has_pubkey:
 			tmp=fpath_pvtkey
 			fname=f"{fpath_pvtkey.stem}{fname}"
@@ -580,7 +619,7 @@ def from_x509_certder_make_esl(
 
 	return fpath_esl
 
-def from_x509_certder_get_pem(
+def from_x509_certder_get_pubkey(
 		fpath_certder:Path,
 		fpath_pubkey:Optional[Path]=None,
 		debug=False
@@ -741,7 +780,7 @@ def sign_image(
 	)
 	obj_pubkey=obj_pvtkey.public_key()
 
-	obj_pubkey_from_certder:Optional[RsaKey]=from_x509_certder_get_pem(
+	obj_pubkey_from_certder:Optional[RsaKey]=from_x509_certder_get_pubkey(
 		fpath_certder,
 		debug=debug
 	)

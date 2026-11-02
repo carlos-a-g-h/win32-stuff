@@ -287,7 +287,7 @@ def set_evar_BootNext(
 
 def get_evar_BootOrder(
 		fun_GetFirmwareEnvironmentVariableW:Callable,
-		as_list:bool=False,
+		as_tuple:bool=False,
 		raw_only:bool=False,
 		debug:bool=False
 	)->Optional[Union[tuple,list],bytes]:
@@ -300,14 +300,14 @@ def get_evar_BootOrder(
 		debug=debug
 	)
 	if data is None:
-		if as_list:
+		if as_tuple:
 			return []
 		return None
 
 	if raw_only:
 		return data
 
-	boot_order=parse_efi_BootOrder(data,as_list=as_list)
+	boot_order=parse_efi_BootOrder(data,as_list=as_tuple)
 
 	return boot_order
 
@@ -580,7 +580,7 @@ if __name__=="__main__":
 		if evar=="BootOrder":
 			print(
 				"BootOrder:",
-				get_evar_BootOrder(GetFwEnVarW,as_list=True)
+				get_evar_BootOrder(GetFwEnVarW)
 			)
 			sys_exit(0)
 
@@ -618,7 +618,7 @@ if __name__=="__main__":
 
 			evar=sys_argv[3].strip()
 
-			boot_order=get_evar_BootOrder(GetFwEnVarW,as_list=True)
+			boot_order=get_evar_BootOrder(GetFwEnVarW)
 
 			if arg_action==_BOOT_ORDER_REMOVE:
 

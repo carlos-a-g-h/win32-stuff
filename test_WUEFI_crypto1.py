@@ -45,18 +45,18 @@ test_efi_file=Path("/media/root/02FE-9983/EFI/Boot/grub2.bootx64.efi")
 
 result=openssl_request_rsa_keypair_with_x509_csr(
 	test_dir,
-	"/CN=WUEFI crypto tests/",
+	"/CN=WUEFI crypto test2/",
 	test_stem,
 	debug=debug_mode
 )
 assert result[0]==0
 
 test_pvtkey=result[1]
-test_pubkey=result[2]
+test_pemcert=result[2]
 
 # - Convert PEM public key to DER format
 
-test_certder=openssl_x509_convert_pem_to_der(test_pubkey,debug=debug_mode)
+test_certder=openssl_x509_convert_pem_to_der(test_pemcert,debug=debug_mode)
 assert (isinstance(test_certder,Path))
 
 test_efi_file_signed=sign_image(
@@ -88,7 +88,7 @@ if running_on_windows:
 
 result=util_subproc([
 	"sbverify",
-		"--cert",str(test_pubkey),
+		"--cert",str(test_pemcert),
 		str(test_efi_file_signed)
 	],
 	verbose=debug_mode
