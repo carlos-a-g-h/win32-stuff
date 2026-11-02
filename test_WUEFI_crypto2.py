@@ -12,7 +12,9 @@ from WUEFI_crypto import (
 
 	openssl_request_rsa_keypair_with_x509_csr,
 	openssl_x509_read_certder,
+	openssl_x509_convert_certder_to_pem,
 	from_x509_keypair_make_certder,
+	from_x509_certder_get_pem,
 	sign_image,
 	_RTYPE_PATH
 )
@@ -40,6 +42,8 @@ test_efi_file=Path("/media/root/02FE-9983/EFI/Boot/grub2.bootx64.efi")
 
 ###############################################################################
 
+# Create RSA x509 key pair
+
 result=openssl_request_rsa_keypair_with_x509_csr(
 	test_dir,
 	"/CN=WUEFI crypto tests/",
@@ -47,6 +51,8 @@ result=openssl_request_rsa_keypair_with_x509_csr(
 	debug=debug_mode
 )
 assert result[0]==0
+
+# Make DER certificate from scratch using the generated keypair
 
 test_pvtkey=result[1]
 test_pubkey=result[2]
@@ -58,6 +64,14 @@ test_certder=from_x509_keypair_make_certder(
 	debug=debug_mode,
 	return_type=_RTYPE_PATH
 )
+assert isinstance(test_certder,Path)
+
+# Make sure that the public key inside the generated certificate matches the
+# public key from the keypair
+
+assert from_x509_certder_get_pem(test_certder,test_pubkey)
+
+# Read (parse) the generated certificate using OpenSSL
 
 result=openssl_x509_read_certder(
 	test_certder,
@@ -83,9 +97,13 @@ if running_on_windows:
 
 # - Verify the signature within the signed EFI file
 
+test_pubkey_recovered=openssl_x509_convert_certder_to_pem(test_certder,debug=debug_mode)
+
+assert isinstance(test_pubkey_recovered,Path)
+
 result=util_subproc([
 	"sbverify",
-		"--cert",str(test_pubkey),
+		"--cert",str(test_pubkey_recovered),
 		str(test_efi_file_signed)
 	],
 	verbose=debug_mode

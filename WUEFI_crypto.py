@@ -329,6 +329,48 @@ def openssl_x509_read_certder(
 
 	return result
 
+def openssl_x509_convert_certder_to_pem(
+		fpath_certder:Path,
+		fpath_out:Optional[Path]=None,
+		confirm_only:bool=False,
+		debug:bool=False,
+	)->Union[bool,Optional[Path]]:
+
+	# Uses OpenSSL's x509 command to parse a DER certificate and converts it into
+	# PEM format
+
+	fpath_pubkey:Optional[Path]=fix_path_out(
+		fpath_certder,fpath_out,
+		f"{fpath_certder.stem}.from_certder.pem",
+		debug=debug
+	)
+	if fpath_pubkey is None:
+		if confirm_only:
+			return False
+		return None
+
+	command=[
+		"openssl","x509",
+			"-inform","DER",
+			"-in",str(fpath_certder),
+			"-outform","PEM",
+			"-out",str(fpath_pubkey),
+	]
+	result=util_subproc(
+		command,
+		verbose=debug,
+	)
+	if not (result[0]==0):
+		if confirm_only:
+			return False
+		return False
+
+	if confirm_only:
+		return True
+
+	return fpath_pubkey
+
+
 ###############################################################################
 
 # Pure python
@@ -562,7 +604,7 @@ def from_x509_certder_get_pem(
 	tag=readres[0]
 	cert_content=readres[1]
 	if not tag==0x30:
-		m="Not a DER X.509 Certificate"
+		m="Not a valid DER X.509 Certificate"
 		if debug:
 			raise Exception(m)
 		print(m)

@@ -16,7 +16,7 @@ import hashlib
 import struct
 
 from pathlib import Path
-from typing import Optional,Union
+from typing import Optional
 
 from asn1crypto import x509 as asn1_x509
 from Crypto.PublicKey import RSA
@@ -311,7 +311,20 @@ def make_pkcs7(
 
 	# Sign the DER SET encoding; SignerInfo stores the same bytes with [0] tag.
 	signature=pkcs1_15.new(private_key).sign(SHA256.new(signed_attrs))
-	signed_attrs_implicit = tlv(0xA0, signed_attrs[2:])
+
+	hdr:Optional[int]=None
+	# hdr = 2 if signed_attrs[1] < 0x80 else 2 + (signed_attrs[1] & 0x7F)
+	ok=(signed_attrs[1] < 0x80)
+	if ok:
+		hdr=2
+	if not ok:
+		hdr=2+(signed_attrs[1] & 0x7F)
+
+	signed_attrs_implicit = tlv(0xA0, signed_attrs[hdr:])
+
+	# test 2 fails with this:
+	# signed_attrs_implicit = tlv(0xA0, signed_attrs[2:])
+
 	digest_alg = algorithm_identifier(OID_SHA256)
 	signature_alg = algorithm_identifier(OID_RSA_ENCRYPTION)
 	issuer_and_serial = seq(
