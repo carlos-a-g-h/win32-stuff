@@ -702,7 +702,6 @@ def cmd_entry_set_description(
 
 	return True
 
-
 def cmd_entry_set_device(
 		identifier:Union[str,UUID],
 		param_device:str,
@@ -749,7 +748,6 @@ def cmd_entry_set_device(
 		return False
 
 	return True
-
 
 def cmd_entry_set_path(
 		identifier:Union[str,UUID],
@@ -1517,11 +1515,6 @@ def write_bootmgr_bootsector_application(
 		app_filepath:str,
 		app_description:str,
 		app_device:Mapping={},
-		# device:Mapping={
-		# 	"Path":None,
-		# 	"DeviceType":1,
-		# 	"AdditionalOptions":""
-		# },
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
 		identifier:Optional[Union[str,UUID]]=None,
@@ -1620,6 +1613,7 @@ def write_bootmgr_bootsector_application(
 	# Add the Device to the Object
 
 	device_DeviceType=app_device.get("DeviceType",1)
+
 	if not isinstance(device_DeviceType,int):
 		msg="DeviceType is not valid"
 		if debug:
@@ -1629,25 +1623,21 @@ def write_bootmgr_bootsector_application(
 			return None
 		return False
 
-	device_AdditionalOptions=app_device.get("AdditionalOptions","")
-	# if not isinstance(device_DeviceType,str):
-	# 	msg="AditionalOptions is not valid"
-	# 	if debug:
-	# 		raise Exception(msg)
-	# 	print(msg)
-	# 	if random_id:
-	# 		return None
-	# 	return False
-
-	# device_Path=app_device.get("Path",None)
-
 	p=bcdobj.Methods_("SetDeviceElement").InParameters.SpawnInstance_()
 	p.Properties_.Item("Type").Value=0x11000001
 
-	p.Properties_.Item("DeviceType").Value=device_DeviceType
-	p.Properties_.Item("AdditionalOptions").Value=device_AdditionalOptions
-	# if device_Path is not None:
-	# 	p.Properties_.Item("Path").Value=device_Path
+	if device_DeviceType==1:
+
+		p.Properties_.Item("DeviceType").Value=1
+		p.Properties_.Item("AdditionalOptions").Value=""
+
+	if device_DeviceType==2:
+
+		p.Properties_.Item("DeviceType").Value=2
+		p.Properties_.Item("AdditionalOptions").Value=""
+
+		# Path = \Device\HarddiskVolumeX
+		p.Properties_.Item("Path").Value=app_device.get("Path")
 
 	result=bcdobj.ExecMethod_("SetDeviceElement",p)
 	if not result.Properties_.Item("ReturnValue").Value:
@@ -1688,26 +1678,8 @@ def write_bootmgr_bootsector_application(
 
 	return True
 
+def write_fwbootmgr_
+
 if __name__=="__main__":
 
 	pass
-
-	# svc=wmi_init()
-
-	# target="{84bb801c-bab4-11f1-af69-c0b6f9a430e8}"
-
-	# ok=write_fwbootmgr_displayorder(
-	# 	svc,
-	# 	[target],
-	# 	addfirst=True,
-	# 	debug=True
-	# )
-	# assert ok
-
-	# results=read_fwbootmgr_displayorder(
-	# 	svc,
-	# 	debug=True
-	# )
-	# for obj in results:
-	# 	print(obj)
-
