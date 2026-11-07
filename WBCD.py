@@ -1,5 +1,23 @@
 #!/usr/bin/python3
 
+# Windows Boot Configuration Data (BCD) stuff
+
+# IMPORTANT NOTE:
+# This module performs very minimal interactions with the UEFI/EFI firmware,
+# most of the stuff it does is only Windows BCD stores, that reside either
+# on the host system or on a sepparate device
+
+# Dependencies (python3.9.5):
+# pywin32==306
+
+# Dependencies (python3.14):
+# pywin32==312
+
+# This module interacts with Windows BCD Stores using the WMI interface and
+# subprocessing BCDBOOT and BCDEDIT
+
+###############################################################################
+
 from pathlib import Path,WindowsPath
 from typing import Mapping,Optional,Union
 from uuid import uuid4,UUID
@@ -21,12 +39,6 @@ from WUtils_windows import (
 )
 
 from WUEFI_symbols import _C_WINDOWS
-
-# This module interacts with Windows BCD Stores using the WMI interface and
-# subprocessing BCDBOOT and BCDEDIT
-
-# IMPORTANT NOTE:
-# This module performs very minimal interactions with the UEFI/EFI firmware
 
 ###############################################################################
 
@@ -825,8 +837,8 @@ def bcdstore_open(
 		return None
 
 	store:wmi_CDispatch=result.Properties_.Item("Store").Value
-	if debug:
-		print("typeOf store:",type(store))
+	# if debug:
+	# 	print("typeOf store:",type(store))
 
 	return store
 
@@ -1230,19 +1242,96 @@ def read_fwbootmgr_displayorder(
 
 # NOTE, WARNING
 
+def write_bootmgr_default(
+		wsw:wmi_CDispatch,
+		bcdstore_obj:Optional[wmi_CDispatch]=None,
+		bcdstore_path:str="",
+		identifier:Optional[str]=None,
+		debug:bool=False
+	)->bool:
+
+	# Write the BOOTMGR's object "default" variable by adding new data
+
+	# Get the store
+
+	store:Optional[wmi_CDispatch]=None
+	if isinstance(bcdstore_obj,wmi_CDispatch):
+		store=bcdstore_obj
+	if store is None:
+		if bcdstore_path is not None:
+			store=bcdstore_open(
+				wsw,fpath_bcdstore=bcdstore_path,
+				debug=debug
+			)
+	if store is None:
+		return False
+
+	# Pull out the Windows Boot Manager Object
+
+	p=store.Methods_("OpenObject").InParameters.SpawnInstance_()
+	p.Properties_.Item("Id").Value=_BCD_ID_BOOTMGR
+	result=store.ExecMethod_("OpenObject",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="OpenObject method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	bootmgr=result.Properties_.Item("Object").Value
+
+	if not isinstance(identifier,str):
+
+		# Removal of the "default"
+
+		p=bootmgr.Methods_("DeleteElement").InParameters.SpawnInstance_()
+		p.Properties_.Item("Type").Value=0x23000003
+		result=bootmgr.ExecMethod_("DeleteElement",p)
+		if not result.Properties_.Item("ReturnValue").Value:
+			msg="DeleteElement method failed"
+			if debug:
+				raise Exception(msg)
+			print(msg)
+			return False
+
+		if debug:
+			print("The default in the BOOTMGR has been removed")
+
+		return True
+
+	# Set the specified identifier as the new "default"
+
+	p=bootmgr.Methods_("SetObjectElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x23000003
+	p.Properties_.Item("Id").Value=identifier
+	result=bootmgr.ExecMethod_("SetObjectElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="SetObjectElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	if debug:
+		print(identifier,"is the default in the BOOTMGR")
+
+	return True
+
 def write_bootmgr_displayorder(
 		wsw:wmi_CDispatch,
 		ids:Union[tuple,list],
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
 		addfirst:bool=False,
+		remove:bool=False,
 		debug:bool=False
 	)->bool:
 
-	# Write the BOOTMGR's displayorder variable by adding new data
+	# Write the BOOTMGR's "displayorder" variable by adding new data
 
 	# NOTE:
 	# The identifiers are added as last items by default
+	# "remove" will remove the selected elements instead of adding them
 
 	# Get the store
 
@@ -1289,20 +1378,35 @@ def write_bootmgr_displayorder(
 	element=result.Properties_.Item("Element").Value
 
 	displayorder_list=[]
-	if addfirst:
+	if (not remove) and addfirst:
+		# if debug:
+		# 	print("Adding first...")
 		for item in ids:
+			# if debug:
+			# 	print("ADD:",item)
 			displayorder_list.append(item)
 
+	# if debug:
+	# 	print("Adding from orig list")
 	for item in element.Properties_.Item("Ids").Value:
 
 		if item in ids:
+			# if debug:
+			# 	print("REM:",item)
 			continue
 
 		displayorder_list.append(item)
 
-	if not addfirst:
+	if (not remove) and (not addfirst):
+		# if debug:
+		# 	print("Adding last...")
 		for item in ids:
+			# if debug:
+			# 	print("ADD:",item)
 			displayorder_list.append(item)
+
+	if debug:
+		print("NEW ORDER:",displayorder_list)
 
 	p=bootmgr.Methods_("SetObjectListElement").InParameters.SpawnInstance_()
 	p.Properties_.Item("Type").Value=0x24000001
@@ -1322,6 +1426,7 @@ def write_fwbootmgr_displayorder(
 		ids:Union[tuple,list],
 		bcdstore_sys:Optional[wmi_CDispatch]=None,
 		addfirst:bool=False,
+		remove:bool=False,
 		debug:bool=False
 	)->bool:
 
@@ -1391,6 +1496,9 @@ def write_fwbootmgr_displayorder(
 		for item in ids:
 			displayorder_list.append(item)
 
+	if debug:
+		print("NEW ORDER:",displayorder_list)
+
 	p=bootmgr.Methods_("SetObjectListElement").InParameters.SpawnInstance_()
 	p.Properties_.Item("Type").Value=0x24000001
 	p.Properties_.Item("Ids").Value=displayorder_list
@@ -1417,7 +1525,8 @@ def write_bootmgr_bootsector_application(
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
 		identifier:Optional[Union[str,UUID]]=None,
-		addlast:bool=False,
+		set_as_first:bool=True,
+		set_as_default:bool=True,
 		debug:bool=False,
 	)->Union[bool,Optional[str]]:
 
@@ -1553,12 +1662,24 @@ def write_bootmgr_bootsector_application(
 	if not write_bootmgr_displayorder(
 			wsw,[obj_id],
 			bcdstore_obj=store,
-			addfirst=True,
+			addfirst=set_as_first,
 			debug=debug
 		):
 		if random_id:
 			return None
 		return False
+
+	if set_as_default:
+
+		if not write_bootmgr_default(
+				wsw,
+				bcdstore_obj=store,
+				identifier=obj_id,
+				debug=debug
+			):
+			if random_id:
+				return None
+			return False
 
 	# All good...?
 
@@ -1567,45 +1688,26 @@ def write_bootmgr_bootsector_application(
 
 	return True
 
-###########################################################################
-
 if __name__=="__main__":
 
-	# Pure BCD WMI test
+	pass
 
-	# The following test was done using real hardware: I grabbed a USB and
-	# changed its partition table to MBR/DOS, marked the partition as
-	# primary and copied the essential files for Grub4DOS
+	# svc=wmi_init()
 
-	# This test creates a BCD bootsector application inside the selected
-	# flash drive I tested it on a QEMU virtual machine. It works
+	# target="{84bb801c-bab4-11f1-af69-c0b6f9a430e8}"
 
-	# This is basically what's going on when the BIOS (or the UEFI firmware
-	# through CSM/Legacy support) pick the flash drive:
+	# ok=write_fwbootmgr_displayorder(
+	# 	svc,
+	# 	[target],
+	# 	addfirst=True,
+	# 	debug=True
+	# )
+	# assert ok
 
-	# BIOS -> USB -> BOOTMGR -> Grub4DOS
+	# results=read_fwbootmgr_displayorder(
+	# 	svc,
+	# 	debug=True
+	# )
+	# for obj in results:
+	# 	print(obj)
 
-	###########################################################################
-
-	dbg_mode=True
-	descr="Grub4DOS entry created using WBCD"
-	usb_bcd=r"Y:\Boot\BCD"
-	usb_path=r"\grldr.mbr"
-
-	###########################################################################
-
-	svc=wmi_init()
-
-	identifier=write_bootmgr_bootsector_application(
-		svc,usb_path,descr,
-		bcdstore_path=usb_bcd,
-		debug=dbg_mode
-	)
-	assert (identifier is not None)
-
-	read_objects(
-		svc,
-		bcdstore_path=usb_bcd,
-		debug=dbg_mode,
-		filter_ids=[identifier]
-	)

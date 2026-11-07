@@ -2,7 +2,11 @@
 
 # Cryptographic functionalities
 
-# Dependencies (python 3.9):
+# NOTE:
+# All cryptographic functionality is centered around x509 RSA key pairs, DER
+# certificates and EFI file signing
+
+# Dependencies (python 3.9.5):
 # asn1crypto==1.5.1
 # pycryptodome==3.2.3
 
@@ -10,9 +14,7 @@
 # asn1crypto==1.5.1
 # pycryptodome==4.2.0
 
-# NOTE:
-# All cryptographic functionality is centered around x509 RSA key pairs, DER
-# certificates and EFI file signing
+################################################################################
 
 from datetime import datetime,timedelta,timezone
 from pathlib import Path
