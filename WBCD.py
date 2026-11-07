@@ -1678,7 +1678,7 @@ def write_bootmgr_bootsector_application(
 
 	return True
 
-def write_fwbootmgr_
+# def write_fwbootmgr
 
 if __name__=="__main__":
 

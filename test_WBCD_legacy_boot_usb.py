@@ -3,6 +3,7 @@
 from WBCD import (
 	wmi_init,
 	read_objects,
+	cmd_new_bcdstore,
 	write_bootmgr_bootsector_application,
 )
 
@@ -27,6 +28,8 @@ if __name__=="__main__":
 
 	dbg_mode=True
 
+	drive="y:"
+
 	descr="Grub4DOS entry created using the WBCD python module"
 
 	path_bcd=r"Y:\Boot\BCD"
@@ -34,6 +37,14 @@ if __name__=="__main__":
 	path_bin=r"\grldr.mbr"
 
 	###########################################################################
+
+	ok=cmd_new_bcdstore(
+		drive,
+		for_bios=True,
+		confirm_only=True,
+		debug=dbg_mode
+	)
+	assert ok
 
 	svc=wmi_init()
 
