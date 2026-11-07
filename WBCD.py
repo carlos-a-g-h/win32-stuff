@@ -38,19 +38,19 @@ _BCD_ID_FWBOOTMGR="{A5A30FA2-3D06-4E9F-B5F4-A01DF9D1FCBA}"
 _BCD_ELEMENTS_DATATYPES=[
 
 	# 0
-	"Boolean",
+		"Boolean",
 	# 1
-	"Integer",
+		"Integer",
 	# 2
-	"String",
+		"String",
 	# 3
-	"Id",
+		"Id",
 	# 4
-	"Integers",
+		"Integers",
 	# 5
-	"Ids",
+		"Ids",
 	# 6
-	"Device",
+		"Device",
 ]
 
 _BCD_OBJECTS_APPLICATIONS={
@@ -929,13 +929,28 @@ def read_obj_element(
 
 			elem_props.update({"Element.DataType":data_type})
 
-			if data_type in ("Boolean","String","Id","Ids","Integers"):
+			if data_type in (
+
+					# Boolean
+						_BCD_ELEMENTS_DATATYPES[0],
+					# String
+						_BCD_ELEMENTS_DATATYPES[2],
+					# Id
+						_BCD_ELEMENTS_DATATYPES[3],
+					# Integers
+						_BCD_ELEMENTS_DATATYPES[4],
+					# Ids
+						_BCD_ELEMENTS_DATATYPES[5],
+				):
 				elem_props.update({data_type:p.Value})
 
-			if data_type=="Integer":
+			# Integer
+			if data_type==_BCD_ELEMENTS_DATATYPES[1]:
+
 				elem_props.update({data_type:int(p.Value)})
 
-			if data_type=="Device":
+			# Device
+			if data_type==_BCD_ELEMENTS_DATATYPES[6]:
 
 				elem_props.update({data_type:read_elem_device(p.Value,debug=debug)})
 
@@ -1066,8 +1081,6 @@ def read_objects(
 			print("\nBCD_Object:",items[-1])
 
 	return items
-
-###############################################################################
 
 # Specific read operations
 
@@ -1391,15 +1404,16 @@ def write_fwbootmgr_displayorder(
 
 	return True
 
-def wmi_create_bootsector_application(
+def write_bootmgr_bootsector_application(
 		wsw:wmi_CDispatch,
-		filepath:str,
-		description:str,
-		device:Mapping={
-			"Path":None,
-			"DeviceType":1,
-			"AdditionalOptions":""
-		},
+		app_filepath:str,
+		app_description:str,
+		app_device:Mapping={},
+		# device:Mapping={
+		# 	"Path":None,
+		# 	"DeviceType":1,
+		# 	"AdditionalOptions":""
+		# },
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
 		identifier:Optional[Union[str,UUID]]=None,
@@ -1468,7 +1482,7 @@ def wmi_create_bootsector_application(
 
 	p=bcdobj.Methods_("SetStringElement").InParameters.SpawnInstance_()
 	p.Properties_.Item("Type").Value=0x12000004
-	p.Properties_.Item("String").Value=description
+	p.Properties_.Item("String").Value=app_description
 	result=bcdobj.ExecMethod_("SetStringElement",p)
 	if not result.Properties_.Item("ReturnValue").Value:
 		msg="CreateObject method failed"
@@ -1483,7 +1497,7 @@ def wmi_create_bootsector_application(
 
 	p=bcdobj.Methods_("SetStringElement").InParameters.SpawnInstance_()
 	p.Properties_.Item("Type").Value=0x12000002
-	p.Properties_.Item("String").Value=filepath
+	p.Properties_.Item("String").Value=app_filepath
 	result=bcdobj.ExecMethod_("SetStringElement",p)
 	if not result.Properties_.Item("ReturnValue").Value:
 		msg="CreateObject method failed"
@@ -1496,7 +1510,7 @@ def wmi_create_bootsector_application(
 
 	# Add the Device to the Object
 
-	device_DeviceType=device.get("DeviceType",1)
+	device_DeviceType=app_device.get("DeviceType",1)
 	if not isinstance(device_DeviceType,int):
 		msg="DeviceType is not valid"
 		if debug:
@@ -1506,7 +1520,7 @@ def wmi_create_bootsector_application(
 			return None
 		return False
 
-	device_AdditionalOptions=device.get("AdditionalOptions","")
+	device_AdditionalOptions=app_device.get("AdditionalOptions","")
 	# if not isinstance(device_DeviceType,str):
 	# 	msg="AditionalOptions is not valid"
 	# 	if debug:
@@ -1516,15 +1530,15 @@ def wmi_create_bootsector_application(
 	# 		return None
 	# 	return False
 
-	device_Path=device.get("Path",None)
+	# device_Path=app_device.get("Path",None)
 
 	p=bcdobj.Methods_("SetDeviceElement").InParameters.SpawnInstance_()
 	p.Properties_.Item("Type").Value=0x11000001
 
 	p.Properties_.Item("DeviceType").Value=device_DeviceType
 	p.Properties_.Item("AdditionalOptions").Value=device_AdditionalOptions
-	if device_Path is not None:
-		p.Properties_.Item("Path").Value=device_Path
+	# if device_Path is not None:
+	# 	p.Properties_.Item("Path").Value=device_Path
 
 	result=bcdobj.ExecMethod_("SetDeviceElement",p)
 	if not result.Properties_.Item("ReturnValue").Value:
@@ -1582,7 +1596,7 @@ if __name__=="__main__":
 
 	svc=wmi_init()
 
-	identifier=wmi_create_bootsector_application(
+	identifier=write_bootmgr_bootsector_application(
 		svc,usb_path,descr,
 		bcdstore_path=usb_bcd,
 		debug=dbg_mode
