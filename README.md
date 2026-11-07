@@ -4,6 +4,14 @@ This repo is a collection of modules and scripts for dealing with Windows stuff,
 
 WARNING: Many of the modules and scripts here will require Admin privileges in order to work or privileges higher than that
 
+## WBCD
+
+A python module for managing BCD stores through WMI as well as basic functionality that relies on BCDEDIT and BCDBOOT
+
+Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WBCD.py)
+
+Note: This module IS NOT RECOMMENDED to interact directly with the UEFI/EFI firmware, the WUEFI_bcdedit has wrappers that are specific for that
+
 ## WPrivilege
 
 A small python module with high level functions that can be used for managing the rights and privileges of a currently running process. It works by using pywin32

@@ -1,13 +1,8 @@
 #!/usr/bin/python3
 
-# Stuff inside Windows
-
-_Win32_GetFwType="GetFirmwareType"
-_Win32_GetFwEnVarW="GetFirmwareEnvironmentVariableW"
-_Win32_SetFwEnvVarExW="SetFirmwareEnvironmentVariableExW"
-
 # Misc
 
+_C_WINDOWS="C:/Windows"
 _ENC_UTF16LE="utf-16-le"
 _KERNEL32="kernel32"
 _NULLTERM=b"\x00\x00"
@@ -26,6 +21,12 @@ _ERR_UINT8="Outside of UINT8"
 
 _GUID_MIN="00000000-0000-0000-0000-000000000000"
 _GUID_MAX="ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+# Stuff inside Windows
+
+_Win32_GetFwType="GetFirmwareType"
+_Win32_GetFwEnVarW="GetFirmwareEnvironmentVariableW"
+_Win32_SetFwEnvVarExW="SetFirmwareEnvironmentVariableExW"
 
 ## EFI/UEFI stuff
 

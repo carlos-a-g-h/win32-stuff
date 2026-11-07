@@ -34,7 +34,7 @@ from WUEFI_symbols import (
 	_EFI_VAR_RUNTIME_ACCESS
 )
 
-from WUEFI_utils import is_hex as util_is_hex
+from WUtils import is_hex as util_is_hex
 
 ###############################################################################
 
@@ -497,7 +497,7 @@ if __name__=="__main__":
 		import_GetFwEnVarW,
 		import_SetFwEnvVarExW
 	)
-	from WUEFI_utils import is_fwtype_uefi
+	from WUtils import is_fwtype_uefi
 
 	arg_main=sys_argv[1].strip().lower()
 

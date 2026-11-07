@@ -36,13 +36,12 @@ from Crypto.Signature import pkcs1_15
 
 from WUEFI_crypto_sbsign import main as sbsign
 from WUEFI_symbols import _EFI_CERT_X509_GUID
-from WUEFI_utils import is_guid as util_guid
-from WUEFI_utils import fix_path_out
+from WUtils import (is_guid as util_guid,fix_path_out)
 
 if sys_platform in ("linux","linux2"):
-	from WUEFI_utils import subproc as util_subproc
+	from WUtils import subproc as util_subproc
 if sys_platform=="win32":
-	from WUEFI_utils_windows import wsubproc as util_subproc
+	from WUtils_windows import wsubproc as util_subproc
 
 # Return Types
 
