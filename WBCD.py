@@ -26,13 +26,14 @@ from WUEFI_symbols import _C_WINDOWS
 # subprocessing BCDBOOT and BCDEDIT
 
 # IMPORTANT NOTE:
-# This module does not cover any interactions with the UEFI firmware
+# This module performs very minimal interactions with the UEFI/EFI firmware
 
 ###############################################################################
 
 # Constants and symbols
 
 _BCD_ID_BOOTMGR="{9dea862c-5cdd-4e70-acc1-f32b344d4795}"
+_BCD_ID_FWBOOTMGR="{A5A30FA2-3D06-4E9F-B5F4-A01DF9D1FCBA}"
 
 _BCD_ELEMENTS_DATATYPES=[
 
@@ -799,7 +800,9 @@ def wmi_init()->wmi_CDispatch:
 
 	return wmi_services_interface
 
-def wmi_bcdstore_open(
+# Basic read operations
+
+def bcdstore_open(
 		wsw:wmi_CDispatch,
 		fpath_bcdstore:str="",
 		debug:bool=False
@@ -827,7 +830,7 @@ def wmi_bcdstore_open(
 
 	return store
 
-def wmi_device_inspect(
+def read_elem_device(
 		device:wmi_CDispatch,
 		as_alist:bool=False,
 		debug:bool=False,
@@ -869,12 +872,14 @@ def wmi_device_inspect(
 
 	return itemsmap
 
-def wmi_bcdobjelem_enum(
+def read_obj_element(
 		bcdobj:wmi_CDispatch,
 		bcdobj_elem:wmi_CDispatch,
+		raw:bool=False,
 		debug:bool=False,
-		raw:bool=False
 	)->Mapping:
+
+	# Given an Element and its parent Object, extract information form the Element
 
 	elem_type=bcdobj_elem.Properties_.Item("Type").Value
 	elem_type_hex=f"0x{elem_type:08X}"
@@ -932,7 +937,7 @@ def wmi_bcdobjelem_enum(
 
 			if data_type=="Device":
 
-				elem_props.update({data_type:wmi_device_inspect(p.Value,debug=debug)})
+				elem_props.update({data_type:read_elem_device(p.Value,debug=debug)})
 
 			continue
 
@@ -966,7 +971,7 @@ def wmi_bcdobjelem_enum(
 
 	return {elem_name:elem_value}
 
-def wmi_bcdobj_inspect(
+def read_obj(
 		bcdobj:wmi_CDispatch,
 		debug:bool=False
 	)->Mapping:
@@ -996,7 +1001,7 @@ def wmi_bcdobj_inspect(
 	for elem in result.Properties_.Item("Elements").Value:
 
 		fields.update(
-			wmi_bcdobjelem_enum(
+			read_obj_element(
 				bcdobj,elem,
 				debug=debug,
 			)
@@ -1004,7 +1009,7 @@ def wmi_bcdobj_inspect(
 
 	return fields
 
-def wmi_bcdstore_enum(
+def read_objects(
 		wsw:wmi_CDispatch,
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
@@ -1024,7 +1029,7 @@ def wmi_bcdstore_enum(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=wmi_bcdstore_open(
+			store=bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1055,12 +1060,336 @@ def wmi_bcdstore_enum(
 				continue
 
 		items.append(
-			wmi_bcdobj_inspect(obj,debug=debug)
+			read_obj(obj,debug=debug)
 		)
 		if debug:
 			print("\nBCD_Object:",items[-1])
 
 	return items
+
+###############################################################################
+
+# Specific read operations
+
+def read_bootmgr_displayorder(
+		wsw:wmi_CDispatch,
+		bcdstore_obj:Optional[wmi_CDispatch]=None,
+		bcdstore_path:str="",
+		as_list:bool=False,
+		debug:bool=False
+	)->Union[Optional[tuple],list]:
+
+	# Reads the displayorder variable from a BOOTMGR object from a BCD Store
+
+	# Get the store
+
+	store:Optional[wmi_CDispatch]=None
+	if isinstance(bcdstore_obj,wmi_CDispatch):
+		store=bcdstore_obj
+	if store is None:
+		if bcdstore_path is not None:
+			store=bcdstore_open(
+				wsw,fpath_bcdstore=bcdstore_path,
+				debug=debug
+			)
+	if store is None:
+		if as_list:
+			return []
+		return None
+
+	# Pull out the Windows Boot Manager Object
+
+	p=store.Methods_("OpenObject").InParameters.SpawnInstance_()
+	p.Properties_.Item("Id").Value=_BCD_ID_BOOTMGR
+	result=store.ExecMethod_("OpenObject",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="OpenObject method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		if as_list:
+			return []
+		return None
+
+	bootmgr=result.Properties_.Item("Object").Value
+
+	# Get the current displayorder element from the object
+
+	p=bootmgr.Methods_("GetElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x24000001
+	result=bootmgr.ExecMethod_("GetElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="GetElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		if as_list:
+			return []
+		return None
+
+	element=result.Properties_.Item("Element").Value
+
+	displayorder=element.Properties_.Item("Ids").Value
+
+	if as_list:
+
+		displayorder_list=[]
+		for item in displayorder:
+			displayorder_list.append(item)
+
+		return displayorder_list
+
+	return displayorder
+
+def read_fwbootmgr_displayorder(
+		wsw:wmi_CDispatch,
+		bcdstore_sys:Optional[wmi_CDispatch]=None,
+		as_list:bool=False,
+		debug:bool=False
+	)->Union[Optional[tuple],list]:
+
+	# Reads the displayorder variable from a FWBOOTMGR object
+
+	# NOTE:
+	# This only works for UEFI systems, and the "bcdstore_obj" CANNOT be a custom
+	# BCD store object, it has to be the system's BCD store
+
+	# Get the store
+
+	store:Optional[wmi_CDispatch]=None
+	if isinstance(bcdstore_sys,wmi_CDispatch):
+		store=bcdstore_sys
+	if store is None:
+		store=bcdstore_open(
+			wsw,
+			debug=debug
+		)
+	if store is None:
+		if as_list:
+			return []
+		return None
+
+	# Pull out the Firmware Boot Manager Object
+
+	p=store.Methods_("OpenObject").InParameters.SpawnInstance_()
+	p.Properties_.Item("Id").Value=_BCD_ID_FWBOOTMGR
+	result=store.ExecMethod_("OpenObject",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="OpenObject method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		if as_list:
+			return []
+		return None
+
+	bootmgr=result.Properties_.Item("Object").Value
+
+	# Get the current displayorder element from the object
+
+	p=bootmgr.Methods_("GetElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x24000001
+	result=bootmgr.ExecMethod_("GetElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="GetElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		if as_list:
+			return []
+		return None
+
+	element=result.Properties_.Item("Element").Value
+
+	displayorder=element.Properties_.Item("Ids").Value
+
+	if as_list:
+
+		displayorder_list=[]
+		for item in displayorder:
+			displayorder_list.append(item)
+
+		return displayorder_list
+
+	return displayorder
+
+# Specific Write Operations
+
+# NOTE, WARNING
+
+def write_bootmgr_displayorder(
+		wsw:wmi_CDispatch,
+		ids:Union[tuple,list],
+		bcdstore_obj:Optional[wmi_CDispatch]=None,
+		bcdstore_path:str="",
+		addfirst:bool=False,
+		debug:bool=False
+	)->bool:
+
+	# Write the BOOTMGR's displayorder variable by adding new data
+
+	# NOTE:
+	# The identifiers are added as last items by default
+
+	# Get the store
+
+	store:Optional[wmi_CDispatch]=None
+	if isinstance(bcdstore_obj,wmi_CDispatch):
+		store=bcdstore_obj
+	if store is None:
+		if bcdstore_path is not None:
+			store=bcdstore_open(
+				wsw,fpath_bcdstore=bcdstore_path,
+				debug=debug
+			)
+	if store is None:
+		return False
+
+	# Pull out the Windows Boot Manager Object
+
+	p=store.Methods_("OpenObject").InParameters.SpawnInstance_()
+	p.Properties_.Item("Id").Value=_BCD_ID_BOOTMGR
+	result=store.ExecMethod_("OpenObject",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="OpenObject method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	bootmgr=result.Properties_.Item("Object").Value
+
+	# Get the current displayorder element from the object
+
+	p=bootmgr.Methods_("GetElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x24000001
+	result=bootmgr.ExecMethod_("GetElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="GetElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	# Modify the displayorder
+
+	element=result.Properties_.Item("Element").Value
+
+	displayorder_list=[]
+	if addfirst:
+		for item in ids:
+			displayorder_list.append(item)
+
+	for item in element.Properties_.Item("Ids").Value:
+
+		if item in ids:
+			continue
+
+		displayorder_list.append(item)
+
+	if not addfirst:
+		for item in ids:
+			displayorder_list.append(item)
+
+	p=bootmgr.Methods_("SetObjectListElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x24000001
+	p.Properties_.Item("Ids").Value=displayorder_list
+	result=bootmgr.ExecMethod_("SetObjectListElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="SetObjectListElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	return True
+
+def write_fwbootmgr_displayorder(
+		wsw:wmi_CDispatch,
+		ids:Union[tuple,list],
+		bcdstore_sys:Optional[wmi_CDispatch]=None,
+		addfirst:bool=False,
+		debug:bool=False
+	)->bool:
+
+	# Write the FWBOOTMGR's displayorder variable by adding new data
+
+	# NOTE:
+	# This only works for UEFI systems, and the "bcdstore_obj" CANNOT be a custom
+	# BCD store object, it has to be the system's BCD store
+	# The identifiers are added as last items by default
+
+	# Get the store
+
+	store:Optional[wmi_CDispatch]=None
+	if isinstance(bcdstore_sys,wmi_CDispatch):
+		store=bcdstore_sys
+	if store is None:
+		store=bcdstore_open(
+			wsw,
+			debug=debug
+		)
+	if store is None:
+		return False
+
+	# Pull out the Firmware Boot Manager Object
+
+	p=store.Methods_("OpenObject").InParameters.SpawnInstance_()
+	p.Properties_.Item("Id").Value=_BCD_ID_FWBOOTMGR
+	result=store.ExecMethod_("OpenObject",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="OpenObject method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	bootmgr=result.Properties_.Item("Object").Value
+
+	# Get the current displayorder element from the object
+
+	p=bootmgr.Methods_("GetElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x24000001
+	result=bootmgr.ExecMethod_("GetElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="GetElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	# Modify the displayorder
+
+	element=result.Properties_.Item("Element").Value
+
+	displayorder_list=[]
+	if addfirst:
+		for item in ids:
+			displayorder_list.append(item)
+
+	for item in element.Properties_.Item("Ids").Value:
+
+		if item in ids:
+			continue
+
+		displayorder_list.append(item)
+
+	if not addfirst:
+		for item in ids:
+			displayorder_list.append(item)
+
+	p=bootmgr.Methods_("SetObjectListElement").InParameters.SpawnInstance_()
+	p.Properties_.Item("Type").Value=0x24000001
+	p.Properties_.Item("Ids").Value=displayorder_list
+	result=bootmgr.ExecMethod_("SetObjectListElement",p)
+	if not result.Properties_.Item("ReturnValue").Value:
+		msg="SetObjectListElement method failed"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	return True
 
 def wmi_create_bootsector_application(
 		wsw:wmi_CDispatch,
@@ -1112,7 +1441,7 @@ def wmi_create_bootsector_application(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=wmi_bcdstore_open(
+			store=bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1207,67 +1536,17 @@ def wmi_create_bootsector_application(
 			return None
 		return False
 
-	# Pull out the Windows Boot Manager Object
-
-	p=store.Methods_("OpenObject").InParameters.SpawnInstance_()
-	p.Properties_.Item("Id").Value=_BCD_ID_BOOTMGR
-	result=store.ExecMethod_("OpenObject",p)
-	if not result.Properties_.Item("ReturnValue").Value:
-		msg="OpenObject method failed"
-		if debug:
-			raise Exception(msg)
-		print(msg)
+	if not write_bootmgr_displayorder(
+			wsw,[obj_id],
+			bcdstore_obj=store,
+			addfirst=True,
+			debug=debug
+		):
 		if random_id:
 			return None
 		return False
 
-	bootmgr=result.Properties_.Item("Object").Value
-
-	# Get the current displayorder element from the object
-
-	p=bootmgr.Methods_("GetElement").InParameters.SpawnInstance_()
-	p.Properties_.Item("Type").Value=0x24000001
-	result=bootmgr.ExecMethod_("GetElement",p)
-	if not result.Properties_.Item("ReturnValue").Value:
-		msg="GetElement method failed"
-		if debug:
-			raise Exception(msg)
-		print(msg)
-		if random_id:
-			return None
-		return False
-
-	element=result.Properties_.Item("Element").Value
-
-	# NOTE:
-	# /addfirst always by default
-
-	displayorder=[]
-	if not addlast:
-		displayorder.append(obj_id)
-
-	for item in element.Properties_.Item("Ids").Value:
-		displayorder.append(item)
-
-	if addlast:
-		displayorder.append(obj_id)
-
-	print("New Order:",displayorder)
-
-	p=bootmgr.Methods_("SetObjectListElement").InParameters.SpawnInstance_()
-	p.Properties_.Item("Type").Value=0x24000001
-	p.Properties_.Item("Ids").Value=displayorder
-	result=bootmgr.ExecMethod_("SetObjectListElement",p)
-	if not result.Properties_.Item("ReturnValue").Value:
-		msg="SetObjectListElement method failed"
-		if debug:
-			raise Exception(msg)
-		print(msg)
-		if random_id:
-			return None
-		return False
-
-	# Ok...?
+	# All good...?
 
 	if random_id:
 		return obj_id
@@ -1310,7 +1589,7 @@ if __name__=="__main__":
 	)
 	assert (identifier is not None)
 
-	wmi_bcdstore_enum(
+	read_objects(
 		svc,
 		bcdstore_path=usb_bcd,
 		debug=dbg_mode,
