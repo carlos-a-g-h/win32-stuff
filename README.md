@@ -6,11 +6,11 @@ WARNING: Many of the modules and scripts here will require Admin privileges in o
 
 ## WBCD
 
-A python module for managing BCD stores through WMI as well as basic functionality that relies on BCDEDIT and BCDBOOT
+A python module for managing BCD stores and boot configurations through WMI as well as basic functionality that relies on BCDEDIT and BCDBOOT
 
 Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WBCD.py)
 
-Note: This module IS NOT RECOMMENDED to interact directly with the UEFI/EFI firmware, the WUEFI_bcdedit has wrappers that are specific for that
+Note: This module contains basic functionality that interacts with the EFI/UEFI firmware, but WUEFI_bcdedit.py is still a better choice imo
 
 ## WPrivilege
 
