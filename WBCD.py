@@ -314,7 +314,7 @@ _BCD_ELEMENTS_OSLOADER = {
 
 ###############################################################################
 
-# Parsing functions
+# Parsing functions (for BCDEDIT's outputs)
 
 def parse_enum_entry_listfield(
 		lines_list:list,
@@ -573,88 +573,6 @@ def cmd_new_bcdstore(
 
 	return WindowsPath(f"{target_drive}/Boot/BCD")
 
-def cmd_new_bootsector_application(
-		identifier:Optional[Union[str,UUID]]=None,
-		bcd_store:Optional[WindowsPath]=None,
-		param_description:Optional[str]=None,
-		debug:bool=False
-	):
-
-	# Creates a bootsector Application entry in a currently existing BCD store
-
-	return_id=False
-	identifier_ok:Optional[str]=None
-
-	command=["bcdedit"]
-
-	if isinstance(bcd_store,Path):
-
-		if bcd_store.is_file():
-			if debug:
-				print("PROVIDED STORE:",bcd_store)
-
-			command.extend(["/store",str(bcd_store)])
-
-	return_id=True
-	if identifier is not None:
-
-		if debug:
-			print("PROVIDED GUID (?):",identifier)
-
-		if isinstance(identifier,UUID):
-			identifier_ok="{"+str(identifier)+"}"
-		if isinstance(identifier,str):
-			identifier_ok=util_filter_identifier(
-				identifier,
-				return_data=True
-			)
-
-			if identifier_ok is None:
-				msg="Malformed GUID"
-				if debug:
-					raise Exception(msg)
-				print(msg)
-
-		if identifier_ok is not None:
-			command.extend(["/create",identifier_ok])
-			return_id=False
-
-	if isinstance(param_description,str):
-
-		command.extend(["/d",param_description])
-
-	command.extend([
-		"/application","BOOTSECTOR"
-	])
-
-	result=wsubproc(command,verbose=debug)
-	if not result[0]==0:
-		msg="Failed to create the entry"
-		if debug:
-			raise Exception(msg)
-		print(msg)
-		if not return_id:
-			return False
-		return None
-
-	if identifier_ok is None:
-		identifier_ok=from_text_extract_identifier(result[1])
-		if identifier_ok is None:
-			msg="Failed to obtain the identifier"
-		if debug:
-			raise Exception(msg)
-		print(msg)
-		if not return_id:
-			return False
-		return None
-
-	if debug:
-		print("RESULT:",identifier_ok)
-
-	if return_id:
-		return True
-	return identifier_ok
-
 def cmd_entry_set_description(
 		identifier:Union[str,UUID],
 		param_description:str,
@@ -796,6 +714,192 @@ def cmd_entry_set_path(
 
 	return True
 
+# def cmd_write_bootmgr_properties(
+# 		bcdstore_path:Optional[WindowsPath]=None,
+# 		param_default:Optional[str]=None,
+# 		param_displayorder:Optional[list]=None,
+# 		param_displaybootmenu:Optional[bool]=None,
+# 		param_timeout:Optional[int]=None
+# 	)->bool:
+
+# 	pass
+
+def cmd_write_bootmgr_default(
+		bcdstore_path:Optional[WindowsPath]=None,
+		param_default:Optional[str]=None,
+		param_displayorder:Optional[list]=None,
+		param_displaybootmenu:Optional[bool]=None,
+		param_timeout:Optional[int]=None
+	)->bool:
+
+	pass
+
+def cmd_write_bootmgr_new_bootsector_application(
+		app_description:str,
+		app_path:str,
+		app_device:str="boot",
+		bcdstore_path:Optional[WindowsPath]=None,
+		identifier:Optional[Union[str,UUID]]=None,
+		set_as_first:bool=True,
+		set_as_default:bool=True,
+		debug:bool=False
+	)->Union[bool,tuple]:
+
+	# Creates a bootsector Application entry (3 BCDEDIT commands)
+
+	return_id=False
+	identifier_ok:Optional[str]=None
+
+	command=["bcdedit"]
+
+	store_ok=isinstance(bcdstore_path,Path)
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
+
+	command.append("/create")
+
+	# return_id=True
+	# if identifier is not None:
+	return_id=(identifier is None)
+	if not return_id:
+		if debug:
+			print("PROVIDED GUID (?):",identifier)
+
+		if isinstance(identifier,UUID):
+			identifier_ok="{"+str(identifier)+"}"
+		if isinstance(identifier,str):
+			identifier_ok=util_filter_identifier(
+				identifier,
+				return_data=True
+			)
+			if identifier_ok is None:
+				msg="Malformed GUID"
+				if debug:
+					raise Exception(msg)
+				print(msg)
+				return False
+
+		if identifier_ok is not None:
+			# command.extend(["/create",identifier_ok])
+			command.append(identifier_ok)
+			return_id=False
+
+	command.extend([
+		"/d",app_description,
+		"/application","BOOTSECTOR"
+	])
+
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		msg="Failed to create the entry"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		if not return_id:
+			return False
+		return (False,None,msg)
+
+	if identifier_ok is None:
+		identifier_ok=from_text_extract_identifier(result[1])
+		if identifier_ok is None:
+			msg="Failed to obtain the identifier from the stdout"
+			if debug:
+				raise Exception(msg)
+			if not return_id:
+				return False
+			return (False,None,msg)
+
+	if debug:
+		print("RESULT:",identifier_ok)
+
+	command.clear()
+
+	# Set the Path
+
+	command.append("bcdedit")
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
+	command.extend([
+		"/set",identifier_ok,
+		"path",app_path
+	])
+
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		msg="Failed to set the Path"
+		if debug:
+			raise Exception(msg)
+		if not return_id:
+			return False
+		return (False,identifier_ok,msg)
+
+	command.clear()
+
+	# Set the Device
+
+	command.append("bcdedit")
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
+	command.extend([
+		"/set",identifier_ok,
+		"device",app_device
+	])
+
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		msg="Failed to set the Device"
+		if debug:
+			raise Exception(msg)
+		if not return_id:
+			return False
+		return (False,identifier_ok,msg)
+
+	command.clear()
+
+	# Include the identifier in the displayorder
+
+	command.append("bcdedit")
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
+	command.extend(["/displayorder",identifier_ok])
+	if set_as_first:
+		command.append("/addfirst")
+	if not set_as_first:
+		command.append("/addlast")
+
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		msg="Failed to modify the displayorder"
+		if debug:
+			raise Exception(msg)
+		if not return_id:
+			return False
+		return (False,identifier_ok,msg)
+
+	command.clear()
+
+	# Set the identifier as the default
+
+	command.append("bcdedit")
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
+	command.extend(["/default",identifier_ok])
+
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		msg="Failed to set the Device"
+		if debug:
+			raise Exception(msg)
+		if not return_id:
+			return False
+		return (False,identifier_ok,msg)
+
+	# All Good
+
+	if not return_id:
+		return True
+	return (True,identifier_ok)
+
 ###############################################################################
 
 # WMI Approach
@@ -812,7 +916,7 @@ def wmi_init()->wmi_CDispatch:
 
 # Basic read operations
 
-def bcdstore_open(
+def wmi_bcdstore_open(
 		wsw:wmi_CDispatch,
 		fpath_bcdstore:str="",
 		debug:bool=False
@@ -840,7 +944,7 @@ def bcdstore_open(
 
 	return store
 
-def read_elem_device(
+def wmi_read_elem_device(
 		device:wmi_CDispatch,
 		as_alist:bool=False,
 		debug:bool=False,
@@ -882,7 +986,7 @@ def read_elem_device(
 
 	return itemsmap
 
-def read_obj_element(
+def wmi_read_obj_element(
 		bcdobj:wmi_CDispatch,
 		bcdobj_elem:wmi_CDispatch,
 		raw:bool=False,
@@ -962,7 +1066,7 @@ def read_obj_element(
 			# Device
 			if data_type==_BCD_ELEMENTS_DATATYPES[6]:
 
-				elem_props.update({data_type:read_elem_device(p.Value,debug=debug)})
+				elem_props.update({data_type:wmi_read_elem_device(p.Value,debug=debug)})
 
 			continue
 
@@ -996,7 +1100,7 @@ def read_obj_element(
 
 	return {elem_name:elem_value}
 
-def read_obj(
+def wmi_read_obj(
 		bcdobj:wmi_CDispatch,
 		debug:bool=False
 	)->Mapping:
@@ -1026,7 +1130,7 @@ def read_obj(
 	for elem in result.Properties_.Item("Elements").Value:
 
 		fields.update(
-			read_obj_element(
+			wmi_read_obj_element(
 				bcdobj,elem,
 				debug=debug,
 			)
@@ -1034,7 +1138,7 @@ def read_obj(
 
 	return fields
 
-def read_objects(
+def wmi_read_objects(
 		wsw:wmi_CDispatch,
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
@@ -1054,7 +1158,7 @@ def read_objects(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=bcdstore_open(
+			store=wmi_bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1085,7 +1189,7 @@ def read_objects(
 				continue
 
 		items.append(
-			read_obj(obj,debug=debug)
+			wmi_read_obj(obj,debug=debug)
 		)
 		if debug:
 			print("\nBCD_Object:",items[-1])
@@ -1094,7 +1198,7 @@ def read_objects(
 
 # Specific read operations
 
-def read_bootmgr_displayorder(
+def wmi_read_bootmgr_displayorder(
 		wsw:wmi_CDispatch,
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
@@ -1111,7 +1215,7 @@ def read_bootmgr_displayorder(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=bcdstore_open(
+			store=wmi_bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1164,7 +1268,7 @@ def read_bootmgr_displayorder(
 
 	return displayorder
 
-def read_fwbootmgr_displayorder(
+def wmi_read_fwbootmgr_displayorder(
 		wsw:wmi_CDispatch,
 		bcdstore_sys:Optional[wmi_CDispatch]=None,
 		as_list:bool=False,
@@ -1183,7 +1287,7 @@ def read_fwbootmgr_displayorder(
 	if isinstance(bcdstore_sys,wmi_CDispatch):
 		store=bcdstore_sys
 	if store is None:
-		store=bcdstore_open(
+		store=wmi_bcdstore_open(
 			wsw,
 			debug=debug
 		)
@@ -1240,7 +1344,7 @@ def read_fwbootmgr_displayorder(
 
 # NOTE, WARNING
 
-def write_bootmgr_default(
+def wmi_write_bootmgr_default(
 		wsw:wmi_CDispatch,
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
 		bcdstore_path:str="",
@@ -1257,7 +1361,7 @@ def write_bootmgr_default(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=bcdstore_open(
+			store=wmi_bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1315,7 +1419,7 @@ def write_bootmgr_default(
 
 	return True
 
-def write_bootmgr_displayorder(
+def wmi_write_bootmgr_displayorder(
 		wsw:wmi_CDispatch,
 		ids:Union[tuple,list],
 		bcdstore_obj:Optional[wmi_CDispatch]=None,
@@ -1338,7 +1442,7 @@ def write_bootmgr_displayorder(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=bcdstore_open(
+			store=wmi_bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1419,7 +1523,7 @@ def write_bootmgr_displayorder(
 
 	return True
 
-def write_fwbootmgr_displayorder(
+def wmi_write_fwbootmgr_displayorder(
 		wsw:wmi_CDispatch,
 		ids:Union[tuple,list],
 		bcdstore_sys:Optional[wmi_CDispatch]=None,
@@ -1441,7 +1545,7 @@ def write_fwbootmgr_displayorder(
 	if isinstance(bcdstore_sys,wmi_CDispatch):
 		store=bcdstore_sys
 	if store is None:
-		store=bcdstore_open(
+		store=wmi_bcdstore_open(
 			wsw,
 			debug=debug
 		)
@@ -1510,7 +1614,7 @@ def write_fwbootmgr_displayorder(
 
 	return True
 
-def write_bootmgr_bootsector_application(
+def wmi_write_bootmgr_new_bootsector_application(
 		wsw:wmi_CDispatch,
 		app_filepath:str,
 		app_description:str,
@@ -1557,7 +1661,7 @@ def write_bootmgr_bootsector_application(
 		store=bcdstore_obj
 	if store is None:
 		if bcdstore_path is not None:
-			store=bcdstore_open(
+			store=wmi_bcdstore_open(
 				wsw,fpath_bcdstore=bcdstore_path,
 				debug=debug
 			)
@@ -1649,7 +1753,7 @@ def write_bootmgr_bootsector_application(
 			return None
 		return False
 
-	if not write_bootmgr_displayorder(
+	if not wmi_write_bootmgr_displayorder(
 			wsw,[obj_id],
 			bcdstore_obj=store,
 			addfirst=set_as_first,
@@ -1661,7 +1765,7 @@ def write_bootmgr_bootsector_application(
 
 	if set_as_default:
 
-		if not write_bootmgr_default(
+		if not wmi_write_bootmgr_default(
 				wsw,
 				bcdstore_obj=store,
 				identifier=obj_id,

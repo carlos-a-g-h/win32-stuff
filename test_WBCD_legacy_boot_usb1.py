@@ -1,10 +1,10 @@
 #!/usr/bin/python3
 
 from WBCD import (
-	wmi_init,
-	read_objects,
 	cmd_new_bcdstore,
-	write_bootmgr_bootsector_application,
+	wmi_init,
+	wmi_read_objects,
+	wmi_write_bootmgr_new_bootsector_application,
 )
 
 ###########################################################################
@@ -48,14 +48,14 @@ if __name__=="__main__":
 
 	svc=wmi_init()
 
-	identifier=write_bootmgr_bootsector_application(
+	identifier=wmi_write_bootmgr_new_bootsector_application(
 		svc,path_bin,descr,
 		bcdstore_path=path_bcd,
 		debug=dbg_mode
 	)
 	assert (identifier is not None)
 
-	read_objects(
+	wmi_read_objects(
 		svc,
 		bcdstore_path=path_bcd,
 		filter_ids=[identifier],
