@@ -1,13 +1,14 @@
 #!/usr/bin/python3
 
-from pathlib import Path,WindowsPath
-
+from pathlib import WindowsPath
 from secrets import token_hex
 
 from WBCD import (
 	cmd_new_bcdstore,
 	cmd_write_bootmgr_new_bootsector_application,
 )
+
+from WUtils_windows import set_nt60_bootcode
 
 ###########################################################################
 
@@ -22,13 +23,15 @@ if __name__=="__main__":
 
 	drive="y:"
 
-	descr="Grub4DOS (created using WBCD; pure BCDEDIT sdsdsdsd)"
+	descr="Grub4DOS entry (using BCDEDIT commands)"
 
 	path_bcd=r"Y:\Boot\BCD"
 
 	path_bin=r"\grldr.mbr"
 
 	###########################################################################
+
+	set_nt60_bootcode(drive,debug=dbg_mode)
 
 	pl=WindowsPath(path_bcd)
 	if pl.is_file():

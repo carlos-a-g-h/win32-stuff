@@ -152,6 +152,24 @@ def wsubproc(
 
 # Functions related to boot
 
+def set_nt60_bootcode(drive:str,debug:bool=False)->bool:
+
+	# Using BOOTSECT, overwrites the MBR of a given device so that BOOTMGR can
+	# load safely
+
+	result=subproc(
+		["bootsect","/nt60",drive,"/mbr"],
+		verboese=debug,
+		encoding="oem"
+	)
+	if not result[0]==0:
+		msg="Failed to overwrite the MBR"
+		if debug:
+			raise Exception(msg)
+		return False
+
+	return True
+
 def get_fwtype(
 		fun_GetFirmwareType:Callable,
 		assertion:bool=True

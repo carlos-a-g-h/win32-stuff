@@ -573,14 +573,14 @@ def cmd_new_bcdstore(
 
 	return WindowsPath(f"{target_drive}/Boot/BCD")
 
-def cmd_entry_set_description(
+def cmd_write_bcdobject_description(
 		identifier:Union[str,UUID],
-		param_description:str,
-		bcd_store:Optional[WindowsPath]=None,
+		description:str,
+		bcdstore_path:Optional[WindowsPath]=None,
 		debug:bool=False
 	)->bool:
 
-	# Sets the description of an entry
+	# Sets the description element of a bcdobject
 
 	identifier_ok:Optional[str]=None
 	if isinstance(identifier,UUID):
@@ -599,15 +599,23 @@ def cmd_entry_set_description(
 		print(msg)
 		return False
 
+	store_ok=isinstance(bcdstore_path,Path)
+	if store_ok:
+		if not bcdstore_path.exists():
+			msg="BCD Store path not found"
+			if debug:
+				raise Exception(msg)
+			print(msg)
+			return False
+
 	command=["bcdedit"]
 
-	if isinstance(bcd_store,Path):
-
-		command.extend(["/store",str(bcd_store)])
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
 
 	command.extend([
 		"/set",identifier_ok,
-		"description",param_description
+		"description",description
 	])
 
 	result=wsubproc(command,verbose=debug)
@@ -620,14 +628,14 @@ def cmd_entry_set_description(
 
 	return True
 
-def cmd_entry_set_device(
+def cmd_write_bcdobject_path(
 		identifier:Union[str,UUID],
-		param_device:str,
-		bcd_store:Optional[WindowsPath]=None,
+		path:str,
+		bcdstore_path:Optional[WindowsPath]=None,
 		debug:bool=False
 	)->bool:
 
-	# Sets the device of an entry
+	# Sets the path element of a bcdobject
 
 	identifier_ok:Optional[str]=None
 	if isinstance(identifier,UUID):
@@ -646,62 +654,23 @@ def cmd_entry_set_device(
 		print(msg)
 		return False
 
-	command=["bcdedit"]
-
-	if isinstance(bcd_store,Path):
-
-		command.extend(["/store",str(bcd_store)])
-
-	command.extend([
-		"/set",identifier_ok,
-		"device",param_device
-	])
-
-	result=wsubproc(command,verbose=debug)
-	if not result[0]==0:
-		msg="Failed to set the device"
-		if debug:
-			raise Exception(msg)
-		print(msg)
-		return False
-
-	return True
-
-def cmd_entry_set_path(
-		identifier:Union[str,UUID],
-		param_path:str,
-		bcd_store:Optional[WindowsPath]=None,
-		debug:bool=False
-	)->bool:
-
-	# Sets the path of an entry
-
-	identifier_ok:Optional[str]=None
-	if isinstance(identifier,UUID):
-		identifier_ok="{"+str(identifier)+"}"
-
-	if isinstance(identifier,str):
-		identifier_ok=util_filter_identifier(
-			identifier,
-			return_data=True
-		)
-
-	if identifier_ok is None:
-		msg="Identifier not valid"
-		if debug:
-			raise Exception(msg)
-		print(msg)
-		return False
+	store_ok=isinstance(bcdstore_path,Path)
+	if store_ok:
+		if not bcdstore_path.exists():
+			msg="BCD Store path not found"
+			if debug:
+				raise Exception(msg)
+			print(msg)
+			return False
 
 	command=["bcdedit"]
 
-	if isinstance(bcd_store,Path):
-
-		command.extend(["/store",str(bcd_store)])
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
 
 	command.extend([
 		"/set",identifier_ok,
-		"path",param_path
+		"path",path
 	])
 
 	result=wsubproc(command,verbose=debug)
@@ -714,6 +683,155 @@ def cmd_entry_set_path(
 
 	return True
 
+def cmd_write_bcdobject_device(
+		identifier:Union[str,UUID],
+		device:str="boot",
+		bcdstore_path:Optional[WindowsPath]=None,
+		debug:bool=False
+	)->bool:
+
+	# Sets the device element of a bcdobject
+
+	identifier_ok:Optional[str]=None
+	if isinstance(identifier,UUID):
+		identifier_ok="{"+str(identifier)+"}"
+
+	if isinstance(identifier,str):
+		identifier_ok=util_filter_identifier(
+			identifier,
+			return_data=True
+		)
+
+	if identifier_ok is None:
+		msg="Identifier not valid"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	store_ok=isinstance(bcdstore_path,Path)
+	if store_ok:
+		if not bcdstore_path.exists():
+			msg="BCD Store path not found"
+			if debug:
+				raise Exception(msg)
+			print(msg)
+			return False
+
+	command=["bcdedit"]
+
+	if store_ok:
+		command.extend(["/store",str(bcdstore_path)])
+
+	command.extend([
+		"/set",identifier_ok,
+		"device",device
+	])
+
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		msg="Failed to set the device"
+		if debug:
+			raise Exception(msg)
+		print(msg)
+		return False
+
+	return True
+
+# def cmd_entry_set_device(
+# 		identifier:Union[str,UUID],
+# 		param_device:str,
+# 		bcd_store:Optional[WindowsPath]=None,
+# 		debug:bool=False
+# 	)->bool:
+
+# 	# Sets the device of an entry
+
+# 	identifier_ok:Optional[str]=None
+# 	if isinstance(identifier,UUID):
+# 		identifier_ok="{"+str(identifier)+"}"
+
+# 	if isinstance(identifier,str):
+# 		identifier_ok=util_filter_identifier(
+# 			identifier,
+# 			return_data=True
+# 		)
+
+# 	if identifier_ok is None:
+# 		msg="Identifier not valid"
+# 		if debug:
+# 			raise Exception(msg)
+# 		print(msg)
+# 		return False
+
+# 	command=["bcdedit"]
+
+# 	if isinstance(bcd_store,Path):
+
+# 		command.extend(["/store",str(bcd_store)])
+
+# 	command.extend([
+# 		"/set",identifier_ok,
+# 		"device",param_device
+# 	])
+
+# 	result=wsubproc(command,verbose=debug)
+# 	if not result[0]==0:
+# 		msg="Failed to set the device"
+# 		if debug:
+# 			raise Exception(msg)
+# 		print(msg)
+# 		return False
+
+# 	return True
+
+# def cmd_entry_set_path(
+# 		identifier:Union[str,UUID],
+# 		param_path:str,
+# 		bcd_store:Optional[WindowsPath]=None,
+# 		debug:bool=False
+# 	)->bool:
+
+# 	# Sets the path of an entry
+
+# 	identifier_ok:Optional[str]=None
+# 	if isinstance(identifier,UUID):
+# 		identifier_ok="{"+str(identifier)+"}"
+
+# 	if isinstance(identifier,str):
+# 		identifier_ok=util_filter_identifier(
+# 			identifier,
+# 			return_data=True
+# 		)
+
+# 	if identifier_ok is None:
+# 		msg="Identifier not valid"
+# 		if debug:
+# 			raise Exception(msg)
+# 		print(msg)
+# 		return False
+
+# 	command=["bcdedit"]
+
+# 	if isinstance(bcd_store,Path):
+
+# 		command.extend(["/store",str(bcd_store)])
+
+# 	command.extend([
+# 		"/set",identifier_ok,
+# 		"path",param_path
+# 	])
+
+# 	result=wsubproc(command,verbose=debug)
+# 	if not result[0]==0:
+# 		msg="Failed to set the path"
+# 		if debug:
+# 			raise Exception(msg)
+# 		print(msg)
+# 		return False
+
+# 	return True
+
 # def cmd_write_bootmgr_properties(
 # 		bcdstore_path:Optional[WindowsPath]=None,
 # 		param_default:Optional[str]=None,
@@ -724,13 +842,17 @@ def cmd_entry_set_path(
 
 # 	pass
 
-def cmd_write_bootmgr_default(
+def cmd_write_bootmgr_properties(
 		bcdstore_path:Optional[WindowsPath]=None,
 		param_default:Optional[str]=None,
 		param_displayorder:Optional[list]=None,
 		param_displaybootmenu:Optional[bool]=None,
 		param_timeout:Optional[int]=None
 	)->bool:
+
+	# WIP:
+	# A function that modifies several elements of the BOOTMGR object
+	# at the same time
 
 	pass
 
