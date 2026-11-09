@@ -1,19 +1,30 @@
 #!/usr/bin/python3
 
-from typing import Mapping,Optional,Union
+from typing import Optional,Union
+
+from WBCD import (
+	# parse_enum_entry_listfield,
+	# parse_enum_entry,
+	parse_enum
+)
 
 from WUEFI_symbols import (
 	_ID_BOOTMGR,
 	_ID_FWBOOTMGR
 )
 
-from WUEFI_utils import (
+from WUtils import (
 	is_guid,
 	fix_str as util_fix_str,
-	split_line_into_kv as util_split_line_into_kv,
+	# split_line_into_kv as util_split_line_into_kv,
 )
 
-from WUEFI_utils_windows import wsubproc as util_subproc
+from WUtils_windows import (
+	wsubproc as util_subproc,
+	util_filter_identifier,
+	util_filter_identifier_list,
+	from_text_extract_identifier
+)
 
 # IMPORTANT NOTE:
 # BCDEDIT's usage throughout this specific module will focus only on working
@@ -21,322 +32,287 @@ from WUEFI_utils_windows import wsubproc as util_subproc
 # module is NOT RECOMMENDED for working with Windows's BCD store even though
 # it contains some basic functionality
 
-# Common identifiers
-
 ###############################################################################
 
 # Utilities specific for this module
 
-def util_filter_identifier(
-		identifier:Optional[str],
-		whitelist:Union[list,tuple]=(
-			_ID_BOOTMGR,
-			_ID_FWBOOTMGR
-		),
-		return_data:bool=False
-	)->Union[bool,Optional[str]]:
+# NOTE:
+# Moved to WBCD.py
 
-	# Filters out a given string to determine wether is a valid identifier for
-	# BCDEDIT or not
+# def util_filter_identifier_list(
+# 		id_group:Union[list,tuple],
+# 		whitelist:Union[list,tuple]=(
+# 			_ID_BOOTMGR,
+# 			_ID_FWBOOTMGR
+# 		),
+# 		return_data=False,
+# 		debug:bool=False
+# 	)->Union[bool,list]:
 
-	if identifier is None:
-		if return_data:
-			return None
-		return False
+# 	# Filters out a group of identifiers
 
-	if not len(whitelist)==0:
-		if identifier in whitelist:
-			if return_data:
-				return identifier
-			return True
+# 	if len(id_group)==0:
+# 		if return_data:
+# 			return []
+# 		return False
 
-	result:Union[bool,Optional[str]]=is_guid(
-		identifier,
-		return_data=return_data
-	)
+# 	targets=[]
+# 	maxlen=len(id_group)
 
-	if isinstance(result,str):
+# 	for item in id_group:
 
-		# str only
+# 		tgt=util_filter_identifier(
+# 			item,whitelist=whitelist,
+# 			return_data=True
+# 		)
+# 		if tgt is None:
+# 			if debug:
+# 				print(item,"Is not valid")
+# 			break
+# 		if tgt in targets:
+# 			if debug:
+# 				print(
+# 					item,
+# 					"already exist among the"
+# 					" targets. Max length reduced"
+# 				)
+# 			maxlen=maxlen-1
+# 			continue
+# 		if debug:
+# 			print(
+# 				"Adding the GUID",item,
+# 				"to the targets"
+# 			)
+# 		targets.append(tgt)
 
-		if len(result)==36:
-			return "{"+result+"}"
+# 	if not len(targets)==maxlen:
+# 		if debug:
+# 			print("One or more given GUIDs are not valid")
+# 		if return_data:
+# 			return []
+# 		return False
 
-	# None or bool
+# 	if debug:
+# 		print(
+# 			"Valid identifiers:",
+# 			targets
+# 		)
 
-	return result
+# 	if return_data:
+# 		return targets
 
-def util_filter_identifier_list(
-		id_group:Union[list,tuple],
-		whitelist:Union[list,tuple]=(
-			_ID_BOOTMGR,
-			_ID_FWBOOTMGR
-		),
-		return_data=False,
-		debug:bool=False
-	)->Union[bool,list]:
-
-	# Filters out a group of identifiers
-
-	if len(id_group)==0:
-		if return_data:
-			return []
-		return False
-
-	targets=[]
-	maxlen=len(id_group)
-
-	for item in id_group:
-
-		tgt=util_filter_identifier(
-			item,whitelist=whitelist,
-			return_data=True
-		)
-		if tgt is None:
-			if debug:
-				print(item,"Is not valid")
-			break
-		if tgt in targets:
-			if debug:
-				print(
-					item,
-					"already exist among the"
-					" targets. Max length reduced"
-				)
-			maxlen=maxlen-1
-			continue
-		if debug:
-			print(
-				"Adding the GUID",item,
-				"to the targets"
-			)
-		targets.append(tgt)
-
-	if not len(targets)==maxlen:
-		if debug:
-			print("One or more given GUIDs are not valid")
-		if return_data:
-			return []
-		return False
-
-	if debug:
-		print(
-			"Valid identifiers:",
-			targets
-		)
-
-	if return_data:
-		return targets
-
-	return True
+# 	return True
 
 ###############################################################################
 
 # Parsing functions
 
-def parse_enum_entry_listfield(
-		lines_list:list,
-		offset:int,
-		opt_items_as_list:bool=False,
-		opt_wrap_in_a_hashmap:bool=False
-	)->Union[str,list,Mapping]:
+# NOTE:
+# Moved to WBCD.py
 
-	# Handles values stored as lists. A good example of this is the
-	# "displayorder" property
+# def parse_enum_entry_listfield(
+# 		lines_list:list,
+# 		offset:int,
+# 		opt_items_as_list:bool=False,
+# 		opt_wrap_in_a_hashmap:bool=False
+# 	)->Union[str,list,Mapping]:
 
-	first_item=util_split_line_into_kv(
-		lines_list[offset],
-		get_tup=True
-	)
-	if first_item is None:
-		if opt_wrap_in_a_hashmap:
-			return {}
-		return []
+# 	# Handles values stored as lists. A good example of this is the
+# 	# "displayorder" property
 
-	name,fvalue=first_item
+# 	first_item=util_split_line_into_kv(
+# 		lines_list[offset],
+# 		get_tup=True
+# 	)
+# 	if first_item is None:
+# 		if opt_wrap_in_a_hashmap:
+# 			return {}
+# 		return []
 
-	maxlen=len(lines_list)
+# 	name,fvalue=first_item
 
-	sp=" "
-	space=""
-	for x in name:
-		space=space+sp
+# 	maxlen=len(lines_list)
 
-	items:str=""
+# 	sp=" "
+# 	space=""
+# 	for x in name:
+# 		space=space+sp
 
-	pos=offset
-	while True:
+# 	items:str=""
 
-		pos=pos+1
-		if pos>maxlen-1:
-			break
-		line=lines_list[pos]
-		if len(line.strip())==0:
-			break
-		if not line.startswith(space):
-			break
-		if line[-1]==sp:
-			break
+# 	pos=offset
+# 	while True:
 
-		item_str=line.strip()
+# 		pos=pos+1
+# 		if pos>maxlen-1:
+# 			break
+# 		line=lines_list[pos]
+# 		if len(line.strip())==0:
+# 			break
+# 		if not line.startswith(space):
+# 			break
+# 		if line[-1]==sp:
+# 			break
 
-		print(
-			"\tFOUND ITEM:",
-			item_str
-		)
+# 		item_str=line.strip()
 
-		items=items+sp+item_str
+# 		print(
+# 			"\tFOUND ITEM:",
+# 			item_str
+# 		)
 
-	items_ok=items.strip()
+# 		items=items+sp+item_str
 
-	print("ITEMS FOUND:",items_ok)
+# 	items_ok=items.strip()
 
-	if opt_wrap_in_a_hashmap:
-		if opt_items_as_list:
-			return {name:items_ok.split()}
+# 	print("ITEMS FOUND:",items_ok)
 
-		return {name:items_ok}
+# 	if opt_wrap_in_a_hashmap:
+# 		if opt_items_as_list:
+# 			return {name:items_ok.split()}
 
-	if opt_items_as_list:
-		return items_ok.split() 
+# 		return {name:items_ok}
 
-	return items_ok
+# 	if opt_items_as_list:
+# 		return items_ok.split() 
 
-def parse_enum_entry(
-		raw_lines:list,offset:int,
-		kli:Union[tuple,list]=(
-			"displayorder",
-			"toolsdisplayorder"
-		)
-	)->Mapping:
+# 	return items_ok
 
-	pos=offset
+# def parse_enum_entry(
+# 		raw_lines:list,offset:int,
+# 		kli:Union[tuple,list]=(
+# 			"displayorder",
+# 			"toolsdisplayorder"
+# 		)
+# 	)->Mapping:
 
-	# Parses a specific entry, taking as a starting position, the underline of
-	# the heading
+# 	pos=offset
 
-	# NOTE:
-	# The offset is at the underline, so above we have the "title" and below the
-	# identifier field
+# 	# Parses a specific entry, taking as a starting position, the underline of
+# 	# the heading
 
-	# NOTE:
-	# KLI stands for Known List Items. Field names that are known to hold items
-	# as lists can be declared here as tuple or lists
+# 	# NOTE:
+# 	# The offset is at the underline, so above we have the "title" and below the
+# 	# identifier field
 
-	heading_loc=util_fix_str(
-		raw_lines[pos-1]
-	)
-	if heading_loc is None:
-		return {}
+# 	# NOTE:
+# 	# KLI stands for Known List Items. Field names that are known to hold items
+# 	# as lists can be declared here as tuple or lists
 
-	pair_identifier=util_split_line_into_kv(
-		raw_lines[pos+1],
-		get_tup=True
-	)
-	if pair_identifier is None:
-		return {}
+# 	heading_loc=util_fix_str(
+# 		raw_lines[pos-1]
+# 	)
+# 	if heading_loc is None:
+# 		return {}
 
-	pos=pos+1
+# 	pair_identifier=util_split_line_into_kv(
+# 		raw_lines[pos+1],
+# 		get_tup=True
+# 	)
+# 	if pair_identifier is None:
+# 		return {}
 
-	maxlen=len(raw_lines)
+# 	pos=pos+1
 
-	# NOTE: Heading is localized and it depends on the Windows Installation
+# 	maxlen=len(raw_lines)
 
-	fields={
-		"identifier":pair_identifier[1],
-		"_Heading":heading_loc
-	}
+# 	# NOTE: Heading is localized and it depends on the Windows Installation
 
-	has_kli=isinstance(kli,(list,tuple))
-	if has_kli:
-		has_kli=(not len(kli)==0)
+# 	fields={
+# 		"identifier":pair_identifier[1],
+# 		"_Heading":heading_loc
+# 	}
 
-	while True:
-		pos=pos+1
-		if pos>maxlen-1:
-			break
-		currline=raw_lines[pos]
+# 	has_kli=isinstance(kli,(list,tuple))
+# 	if has_kli:
+# 		has_kli=(not len(kli)==0)
 
-		if currline.startswith(" "):
-			continue
+# 	while True:
+# 		pos=pos+1
+# 		if pos>maxlen-1:
+# 			break
+# 		currline=raw_lines[pos]
 
-		if len(currline.strip())==0:
-			break
+# 		if currline.startswith(" "):
+# 			continue
 
-		pair=util_split_line_into_kv(currline,get_tup=True)
-		if pair is None:
-			continue
+# 		if len(currline.strip())==0:
+# 			break
 
-		if has_kli:
+# 		pair=util_split_line_into_kv(currline,get_tup=True)
+# 		if pair is None:
+# 			continue
 
-			# Detects Known List Items
+# 		if has_kli:
 
-			if pair[0] in kli:
-				fields.update(
-					parse_enum_entry_listfield(
-						raw_lines,pos,
-						opt_wrap_in_a_hashmap=True
-					)
-				)
-				continue
+# 			# Detects Known List Items
 
-		if pair is None:
-			continue
+# 			if pair[0] in kli:
+# 				fields.update(
+# 					parse_enum_entry_listfield(
+# 						raw_lines,pos,
+# 						opt_wrap_in_a_hashmap=True
+# 					)
+# 				)
+# 				continue
 
-		fields.update({pair[0]:pair[1]})
+# 		if pair is None:
+# 			continue
 
-	fields.update({"progress":pos-offset})
+# 		fields.update({pair[0]:pair[1]})
 
-	return fields
+# 	fields.update({"progress":pos-offset})
 
-def parse_enum(
-		raw_str:str,
-		kli:Union[tuple,list]=(
-			"displayorder",
-			"toolsdisplayorder"
-		)
-	)->list:
+# 	return fields
 
-	# Main parsing function for BCDEDIT's output
+# def parse_enum(
+# 		raw_str:str,
+# 		kli:Union[tuple,list]=(
+# 			"displayorder",
+# 			"toolsdisplayorder"
+# 		)
+# 	)->list:
 
-	lines_as_list=raw_str.splitlines()
+# 	# Main parsing function for BCDEDIT's output
 
-	entries=[]
-	content={}
+# 	lines_as_list=raw_str.splitlines()
 
-	count=-1
-	maxlen=len(lines_as_list)
+# 	entries=[]
+# 	content={}
 
-	while True:
+# 	count=-1
+# 	maxlen=len(lines_as_list)
 
-		count=count+1
-		if count>maxlen-1:
-			break
+# 	while True:
 
-		if not len(content)==0:
-			content.clear()
+# 		count=count+1
+# 		if count>maxlen-1:
+# 			break
 
-		line=lines_as_list[count]
+# 		if not len(content)==0:
+# 			content.clear()
 
-		if line.startswith("-"):
+# 		line=lines_as_list[count]
 
-			content.update(
-				parse_enum_entry(
-					lines_as_list,
-					count,
-					kli=kli
-				)
-			)
+# 		if line.startswith("-"):
 
-		if not len(content)==0:
-			progress=content.pop("progress")
-			count=count+progress-1
-			if not len(content)==0:
-				entries.append(
-					content.copy()
-				)
+# 			content.update(
+# 				parse_enum_entry(
+# 					lines_as_list,
+# 					count,
+# 					kli=kli
+# 				)
+# 			)
 
-	return entries
+# 		if not len(content)==0:
+# 			progress=content.pop("progress")
+# 			count=count+progress-1
+# 			if not len(content)==0:
+# 				entries.append(
+# 					content.copy()
+# 				)
+
+# 	return entries
 
 ###############################################################################
 
@@ -423,22 +399,24 @@ def cmd_entry_copy(
 	if not result_subproc[0]==0:
 		return None
 
+	return from_text_extract_identifier(result_subproc[1])
+
 	# Parse the standard output to grab the GUID
 
-	stdout=result_subproc[1]
+	# stdout=result_subproc[1]
 
-	guid_start=stdout.find("{")
-	if guid_start==-1:
-		return None
-	guid_end=stdout[guid_start+1:].find("}")
-	if not guid_end==36:
-		return None
+	# guid_start=stdout.find("{")
+	# if guid_start==-1:
+	# 	return None
+	# guid_end=stdout[guid_start+1:].find("}")
+	# if not guid_end==36:
+	# 	return None
 
-	return util_filter_identifier(
-		stdout[guid_start+1:guid_start+1+guid_end],
-		whitelist=[],
-		return_data=True
-	)
+	# return util_filter_identifier(
+	# 	stdout[guid_start+1:guid_start+1+guid_end],
+	# 	whitelist=[],
+	# 	return_data=True
+	# )
 
 def cmd_entry_modify(
 		identifier:str,

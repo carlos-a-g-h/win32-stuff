@@ -1,16 +1,17 @@
 #!/usr/bin/python3
 
 # Minimal PURE Python implementation of SBSIGN
-
 # Based on https://git.kernel.org/pub/scm/linux/kernel/git/jejb/sbsigntools.git
 
-# Dependencies (python 3.9):
+# Dependencies (python 3.9.5):
 # asn1crypto==1.5.1
 # pycryptodome==3.2.3
 
 # Dependencies (python 3.14):
 # asn1crypto==1.5.1
 # pycryptodome==4.2.0
+
+################################################################################
 
 import hashlib
 import struct

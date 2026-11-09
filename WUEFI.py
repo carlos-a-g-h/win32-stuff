@@ -32,7 +32,7 @@ from WUEFI_serde import (
 
 from WUEFI_symbols import _ELO_NODE_MEDIA_FILEPATH,_ELO_NODE_END
 
-from WUEFI_utils import return_result,fix_str,is_uint32
+from WUtils import return_result,fix_str,is_uint32
 
 def main_CreateFwBootEntry(
 

@@ -20,7 +20,7 @@ from WUEFI_symbols import (
 	_ELO_NODE_END
 )
 
-from WUEFI_utils import (
+from WUtils import (
 	is_uint8,
 	is_uint16,
 	is_uint32,
