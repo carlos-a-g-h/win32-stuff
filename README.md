@@ -12,6 +12,12 @@ Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WBCD.py
 
 Note: This module contains basic functionality that interacts with the EFI/UEFI firmware, but WUEFI_bcdedit.py is still a better choice imo
 
+## WDisks
+
+A python module for obtaining information about disks, partitions and volumes. It works by using ctypes
+
+Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WDisks.py)
+
 ## WPrivilege
 
 A small python module with high level functions that can be used for managing the rights and privileges of a currently running process. It works by using pywin32
