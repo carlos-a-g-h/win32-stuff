@@ -7,18 +7,23 @@ from WPrivilege import env_gain_extra_priv,query_proc_priv_info
 if __name__=="__main__":
 
 	if not query_proc_priv_info():
-		print("Run as admin")
+		print("Must run as admin")
 		exit(1)
 
 	env_gain_extra_priv()
 
 	k=init_kernel32()
 
-	print("\nDISKS")
+	print("\n[ DISKS] ")
 
 	enum_disks(k,debug=True,detail_lvl=2)
 
-	print("\nVOLUMES")
+	print("\n[ VOLUMES ] ")
 
-	enum_volumes(k,debug=True)
+	vols=enum_volumes(k,get_spm=True,debug=True)
 
+	print("\n[ VOLUMES (SPM) ]")
+
+	for v in vols:
+
+		print("\nVOLUME:",v)

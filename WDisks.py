@@ -4,7 +4,7 @@
 
 import ctypes
 from ctypes import wintypes,WinDLL,WinError
-from typing import Optional,Union
+from typing import Mapping,Optional,Union
 from uuid import UUID
 
 from WUtils_windows import from_text_extract_identifier as from_str_extract_uuid
@@ -19,6 +19,7 @@ FILE_SHARE_READ = 0x00000001
 FILE_SHARE_WRITE = 0x00000002
 GENERIC_READ = 0x80000000
 
+ERROR_ACCESS_DENIED=5
 ERROR_FILE_NOT_FOUND=2
 ERROR_NO_MORE_FILES=18
 ERROR_MORE_DATA=234
@@ -379,7 +380,6 @@ def get_disk_partitions(
 
 	return partitions
 
-
 def get_disk(
 		kernel32:Optional[WinDLL],
 		disk_index:int,
@@ -502,11 +502,89 @@ def enum_disks(
 
 	return disks
 
+def get_single_partition_from_extents(
+		kernel32:Optional[WinDLL],
+		ext_disk:int,
+		ext_start:int,
+		ext_len:int,
+		partitions:list=[],
+		return_int:bool=False,
+		debug:bool=False
+	)->Union[int,Mapping]:
+
+	# Given a disk extent (disk index, extent start and extent length), get the
+	# partition that matches that exact extent
+
+	# NOTE:
+	# by providing the partitions list, it is assumed that they belong to the
+	# specific disk
+
+	plist:Optional[list]=None
+
+	if len(partitions)==0:
+
+		plist=get_disk_partitions(kernel32,ext_disk,debug=debug)
+		if plist is None:
+			if return_int:
+				return -1
+			return None
+
+		if len(plist)==0:
+			if return_int:
+				return -1
+			return None
+
+	pp={}
+	part_num_ok=-1
+
+	for p in plist:
+
+		part_num=p.get("part_num")
+		if not isinstance(part_num,int):
+			continue
+		if not part_num>0:
+			continue
+
+		part_start=p.get("part_start")
+		if not isinstance(part_start,int):
+			continue
+		if not part_start>0:
+			continue
+
+		part_len=p.get("part_len")
+		if not isinstance(part_len,int):
+			continue
+		if not part_len>0:
+			continue
+
+		if not part_start==ext_start:
+			continue
+
+		if not part_len==ext_len:
+			continue
+
+		print("EXTENTS MATCH:",p)
+
+		if return_int:
+			part_num_ok=part_num
+			break
+
+		pp.update(p)
+		break
+
+	if return_int:
+		return part_num_ok
+
+	return pp
+
 def get_volume_extents(
 		kernel32:Optional[WinDLL],
 		volume_name:str,
+		# get_sp:bool=False,
 		debug:bool=False,
 	)->list:
+
+	# Get the disk extents from a volume
 
 	k32:Optional[WinDLL]=kernel32
 
@@ -600,7 +678,6 @@ def get_volume_extents(
 
 		size = max(size * 2, 8 + count * ctypes.sizeof(DISK_EXTENT))
 
-
 	# End of Loop
 
 	if fatal:
@@ -628,15 +705,50 @@ def get_volume_extents(
 		ext_len=int(ext.ExtentLength)
 		ext_dn=int(ext.DiskNumber)
 
+		# partition_match=-1
+
+		# if get_sp:
+
+		# 	partition_match=get_single_partition_from_extents(
+		# 		None,
+		# 		ext_dn,ext_start,
+		# 		ext_len,
+		# 		return_int=True,
+		# 		debug=debug
+		# 	)
+
 		results.append({
 			"DiskNumber":ext_dn,
 			"StartingOffset":ext_start,
-			"ExtentLength":ext_len
+			"ExtentLength":ext_len,
+			# "partition_match":partition_match
 		})
 		# if debug:
 		# 	print("INV DISK:",results[-1])
 
 	k32.CloseHandle(handle)
+
+	# if len(results)==1 and get_sp:
+
+	# 	# Get Single Partition Match from single disk Extent
+
+	# 	ext_dn=results[0].get("DiskNumber")
+	# 	ext_start=results[0].get("StartingOffset")
+	# 	ext_len=results[0].get("ExtentLength")
+
+	# 	part_num=get_single_partition_from_extents(
+	# 		None,
+	# 		ext_dn,ext_start,ext_len,
+	# 		return_int=True,
+	# 		debug=debug
+	# 	)
+
+	# 	if part_num>0:
+	# 		results.append({
+	# 			"matches_disk":ext_dn,
+	# 			"matches_part":part_num
+	# 		})
+
 	return results
 
 def get_volume_paths(
@@ -727,6 +839,7 @@ def get_volume_filesystem(
 def get_volume(
 		kernel32:WinDLL,
 		volume_name:str,
+		# get_partitions:bool=False,
 		debug:bool=True,
 	):
 
@@ -745,7 +858,11 @@ def get_volume(
 	if not len(volume_paths)==0:
 		vol.update({"volume_paths":volume_paths})
 
-	volume_extents=get_volume_extents(kernel32,volume_name,debug=debug)
+	volume_extents=get_volume_extents(
+		kernel32,volume_name,
+		# get_sp=get_partitions,
+		debug=debug
+	)
 	if not len(volume_extents)==0:
 		vol.update({"volume_extents":volume_extents})
 
@@ -753,6 +870,7 @@ def get_volume(
 
 def enum_volumes(
 		kernel32:Optional[WinDLL],
+		get_spm:bool=False,
 		debug:bool=True
 	)->list:
 
@@ -818,7 +936,11 @@ def enum_volumes(
 		volume_name = buffer.value
 
 		volumes.append(
-			get_volume(k32,volume_name,debug=debug)
+			get_volume(
+				k32,volume_name,
+				# get_partitions=get_partitions,
+				debug=debug
+			)
 		)
 		if debug:
 			print("VOL:",volumes[-1])
@@ -837,4 +959,74 @@ def enum_volumes(
 			raise WinError(error)
 
 	k32.FindVolumeClose(handle)
+
+	if get_spm:
+
+		# Get Single Partition Match of each volume
+
+		disks_involved=[]
+
+		for vol in volumes:
+
+			if not len(vol.get("volume_extents",[]))==1:
+				continue
+
+			disk_number=vol["volume_extents"][0].get("DiskNumber")
+			if disk_number<0:
+				continue
+
+			disks_involved.append(disk_number)
+
+		parts_involved={}
+
+		k32_extra=init_kernel32()
+
+		for disk in disks_involved:
+
+			if disk in parts_involved.keys():
+				continue
+
+			parts_involved.update({
+				disk:get_disk_partitions(k32_extra,disk,debug=debug)
+			})
+
+		for vvv in volumes:
+
+			if not len(vvv.get("volume_extents",[]))==1:
+				continue
+
+			disk_number=vvv["volume_extents"][0].get("DiskNumber")
+			if disk_number<0:
+				continue
+
+			if disk_number not in parts_involved.keys():
+				continue
+
+			extent_start=vvv["volume_extents"][0].get("StartingOffset",-1)
+			if not extent_start>0:
+				continue
+
+			extent_length=vvv["volume_extents"][0].get("ExtentLength",-1)
+			if not extent_length>0:
+				continue
+
+			# vvv.update({"volume_partition":parts_involved[disk_number]})
+
+			# vvv.update({
+			# 	"volume_partition":get_single_partition_from_extents(
+			# 								None,parts_involved[disk_number]
+			# 							)
+			# })
+
+			vvv["volume_extents"].append(
+				get_single_partition_from_extents(
+					None,
+					disk_number,
+					extent_start,
+					extent_length,
+				)
+			)
+
+			print("Vol with part",vvv)
+
 	return volumes
