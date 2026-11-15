@@ -115,21 +115,38 @@ def util_filter_identifier_list(
 
 	return True
 
-def from_text_extract_identifier(text:str)->Optional[str]:
+def from_text_extract_identifier(
+		text:str,
+		just_check:bool=False
+	)->Optional[str]:
 
 	guid_start=text.find("{")
 	if guid_start==-1:
+		if just_check:
+			return False
 		return None
 
 	guid_end=text[guid_start+1:].find("}")
 	if not guid_end==36:
+		if just_check:
+			return False
 		return None
 
-	return util_filter_identifier(
+	guid_str=util_filter_identifier(
 		text[guid_start+1:guid_start+1+guid_end],
 		whitelist=[],
 		return_data=True
 	)
+	if guid_str is None:
+		if just_check:
+			return False
+		return None
+
+	if just_check:
+		return False
+
+	return None
+
 
 ###############################################################################
 

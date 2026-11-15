@@ -1,13 +1,21 @@
 #!/usr/bin/python3
 
-# Query disk information using ctypes
+# Query disk information using ctypes and mount volumes
 
 import ctypes
 from ctypes import wintypes,WinDLL,WinError
+
+# from pathlib import WindowsPath
+
 from typing import Mapping,Optional,Union
 from uuid import UUID
 
-from WUtils_windows import from_text_extract_identifier as from_str_extract_uuid
+from WUtils_windows import (
+	wsubproc,
+	from_text_extract_identifier as from_str_extract_uuid
+)
+
+_DRIVELETTERS="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 _IOCTL_DISK_GET_DRIVE_LAYOUT_EX = 0x00070050
 IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS = 0x00560000
@@ -137,6 +145,14 @@ def init_kernel32()->WinDLL:
 	k32.FindVolumeClose.argtypes = [wintypes.HANDLE]
 	k32.FindVolumeClose.restype = wintypes.BOOL
 
+	# GetLogicalDriveStrings
+
+	k32.GetLogicalDriveStringsW.argtypes=[
+		wintypes.DWORD,
+		wintypes.LPWSTR
+	]
+	k32.GetLogicalDriveStringsW.restype = wintypes.DWORD
+
 	# GetVolumeInformationW
 
 	k32.GetVolumeInformationW.argtypes = [
@@ -194,6 +210,10 @@ def util_winerror(
 		return error
 
 	return None
+
+###############################################################################
+
+# Disks and partitions
 
 def get_disk_partitions(
 		kernel32:Optional[WinDLL],
@@ -502,6 +522,10 @@ def enum_disks(
 
 	return disks
 
+###############################################################################
+
+# Volumes
+
 def get_single_partition_from_extents(
 		kernel32:Optional[WinDLL],
 		ext_disk:int,
@@ -705,49 +729,13 @@ def get_volume_extents(
 		ext_len=int(ext.ExtentLength)
 		ext_dn=int(ext.DiskNumber)
 
-		# partition_match=-1
-
-		# if get_sp:
-
-		# 	partition_match=get_single_partition_from_extents(
-		# 		None,
-		# 		ext_dn,ext_start,
-		# 		ext_len,
-		# 		return_int=True,
-		# 		debug=debug
-		# 	)
-
 		results.append({
 			"DiskNumber":ext_dn,
 			"StartingOffset":ext_start,
 			"ExtentLength":ext_len,
-			# "partition_match":partition_match
 		})
-		# if debug:
-		# 	print("INV DISK:",results[-1])
 
 	k32.CloseHandle(handle)
-
-	# if len(results)==1 and get_sp:
-
-	# 	# Get Single Partition Match from single disk Extent
-
-	# 	ext_dn=results[0].get("DiskNumber")
-	# 	ext_start=results[0].get("StartingOffset")
-	# 	ext_len=results[0].get("ExtentLength")
-
-	# 	part_num=get_single_partition_from_extents(
-	# 		None,
-	# 		ext_dn,ext_start,ext_len,
-	# 		return_int=True,
-	# 		debug=debug
-	# 	)
-
-	# 	if part_num>0:
-	# 		results.append({
-	# 			"matches_disk":ext_dn,
-	# 			"matches_part":part_num
-	# 		})
 
 	return results
 
@@ -1010,14 +998,6 @@ def enum_volumes(
 			if not extent_length>0:
 				continue
 
-			# vvv.update({"volume_partition":parts_involved[disk_number]})
-
-			# vvv.update({
-			# 	"volume_partition":get_single_partition_from_extents(
-			# 								None,parts_involved[disk_number]
-			# 							)
-			# })
-
 			vvv["volume_extents"].append(
 				get_single_partition_from_extents(
 					None,
@@ -1030,3 +1010,187 @@ def enum_volumes(
 			print("Vol with part",vvv)
 
 	return volumes
+
+def enum_drive_roots(
+		kernel32:Optional[WinDLL],
+		ljtl:bool=False,
+		debug:bool=False
+	)->list:
+
+	# Get drive letters that are already being used
+
+	# LJTL = Literally, Just The Letters
+
+	k32:Optional[WinDLL]=kernel32
+
+	if k32 is None:
+
+		k32=WinDLL("kernel32",use_last_error=True)
+
+		k32.GetLogicalDriveStringsW.argtypes=[
+			wintypes.DWORD,
+			wintypes.LPWSTR
+		]
+		k32.GetLogicalDriveStringsW.restype = wintypes.DWORD
+
+	size=256
+
+	werror=0
+	buffer_ok=None
+	fatal=False
+
+	while True:
+
+		werror=0
+
+		buffer=ctypes.create_unicode_buffer(size)
+
+		chars_written=k32.GetLogicalDriveStringsW(size,buffer)
+
+		if chars_written==0:
+
+			werror=util_winerror(return_code=True,debug=False)
+			fatal=True
+
+			break
+
+		if chars_written<size:
+
+			buffer_ok=buffer
+
+			break
+
+		size=chars_written+1
+
+	if fatal:
+		if debug:
+			raise WinError(werror)
+
+		print("WinError:",werror)
+		return []
+
+	drives=util_parse_MULTI_SZ(buffer_ok,chars_written)
+
+	# print("DRIVES:",drives)
+
+	if ljtl:
+		letters=[]
+		for d in drives:
+			letters.append(d[0])
+
+		return letters
+
+	return drives
+
+
+###############################################################################
+
+# Mount functions
+
+def get_free_mountpoint(
+		kernel32:WinDLL,
+		ret_as_drive:bool=False,
+		ret_as_path:bool=False,
+		debug:bool=False
+	)->Optional[str]:
+
+	letters_busy=enum_drive_roots(
+		kernel32,
+		ljtl=True,
+		debug=debug
+	)
+	if len(letters_busy)==0:
+		return None
+
+	letter_free=None
+
+	for char in _DRIVELETTERS:
+
+		print(char)
+
+		if char in ("A","B","C"):
+			continue
+
+		if char in letters_busy:
+			continue
+
+		print("taking...")
+
+		if ret_as_drive:
+			letter_free=char+":"
+			break
+
+		if ret_as_path:
+			letter_free=rf"{char}:\\"
+			break
+
+		letter_free=char
+
+		break
+
+	return letter_free
+
+def mount_volume(
+		vol_name:str,letter:str,
+		debug=False
+	)->bool:
+
+	command=[
+		"mountvol",
+			letter,
+			vol_name
+	]
+
+	result=wsubproc(command,verbose=debug)
+	if not result==0:
+		return False
+
+	return True
+
+def mount_esp_partition(letter:str,debug=False):
+
+	command=[
+		"mountvol",
+			letter,
+			"/S"
+	]
+
+	result=wsubproc(command,verbose=debug)
+	if not result==0:
+		return False
+
+	return True
+
+def from_mountpoint_get_volume(
+		letter_or_path:str,
+		return_uuid:bool=False,
+		debug=False
+	)->Optional[str]:
+
+	# Given a mountpoint or a dirpath, get wether a volume is mounted or not
+
+	command=[
+		"mountvol",
+			letter_or_path,
+			"/L"
+	]
+	result=wsubproc(command,verbose=debug)
+	if not result==0:
+		return None
+
+
+	trimmed=result[1].strip()
+
+	vol_id=from_str_extract_uuid(trimmed)
+	if vol_id is None:
+		return None
+
+	if return_uuid:
+		return vol_id
+
+	if debug:
+		print(trimmed)
+
+	return trimmed
+
+
