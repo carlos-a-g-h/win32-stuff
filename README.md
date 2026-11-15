@@ -14,7 +14,7 @@ Note: This module contains basic functionality that interacts with the EFI/UEFI 
 
 ## WDisks
 
-A python module for obtaining information about disks, partitions and volumes. It works by using ctypes
+A python module for obtaining information about filesystems as well as mounting. It works by using ctypes for querying info and the MOUNTVOL command for mounting volumes
 
 Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WDisks.py)
 
