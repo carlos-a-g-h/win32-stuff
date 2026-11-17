@@ -1,6 +1,6 @@
 # My Win32 stuff
 
-[![View on DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/carlos-a-g-h/win32-stuff)
+[![View on DeepWiki](https://raw.githubusercontent.com/carlos-a-g-h/win32-stuff/refs/heads/main/deepwiki.svg)](https://deepwiki.com/carlos-a-g-h/win32-stuff)
 
 This repo is a collection of modules and scripts for dealing with Windows stuff, wether it's through the Win32 API using ctypes, WMI, or by subprocessing commandline programs that are open source or come by default OOTB on Windows
 
