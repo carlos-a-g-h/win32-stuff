@@ -165,6 +165,34 @@ def wsubproc(
 		encoding="oem"
 	)
 
+def copy_files(path1:Path,path2:Path)->bool:
+
+	if not path1.exists():
+		return False
+
+	if path1.is_dir():
+		
+		# NOTE: The contents of the directory are copied, not the directory
+
+		result=wsubproc([
+				"xcopy",
+					str(path1),
+					str(path2),
+					"/E","/Y",
+			],
+			verbose=True
+		)
+		return result[0]==0
+
+	result=wsubproc([
+			"copy","/Y",
+				str(path1),
+				str(path2)
+		],
+		verbose=True
+	)
+	return result[0]==0
+
 ###############################################################################
 
 # Functions related to boot
