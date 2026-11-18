@@ -40,7 +40,7 @@ This group of modules lets you modify the EFI/UEFI firmware boot options. It wor
 
 - You can determine wether the system is EFI/UEFI booted or Legacy booted
 
-- You can do raw reading and writing of EFI variables
+- You can do raw reading and writing of almost any EFI variable
 
 ### What works on a higher level or for specific EFI/UEFI variables?
 
@@ -48,7 +48,7 @@ This group of modules lets you modify the EFI/UEFI firmware boot options. It wor
 
 - You can read/write the "BootNext" EFI variable
 
-- You can read/write the "BootOrder" EFI variable
+- You can read/write the "BootOrder" EFI variable (it is treated as a list)
 
 - You can read and write a specific boot entry ("Boot####" EFI variable)
 
