@@ -34,7 +34,7 @@ Source code [here](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WPrivil
 
 ## WUEFI
 
-Lets you modify the EFI/UEFI firmware boot options. It works by using the Windows API through ctypes and Windows's BCDEDIT commandline utility as a subprocess
+This group of modules lets you modify the EFI/UEFI firmware boot options. It works by using the Windows API through ctypes and Windows's BCDEDIT commandline utility as a subprocess
 
 ### What works on a lower level?
 
@@ -60,4 +60,4 @@ Lets you modify the EFI/UEFI firmware boot options. It works by using the Window
 
 [WUEFI_bcdedit.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_bcdedit.py) has functions that run BCDEDIT commands that are specific for firmware boot entries
 
-[WUEFI_crypto.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_crypto.py) and [WUEFI_crypto_sbsign.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_crypto_sbsign.py) are cryptographic modules for the WUEFI project
+[WUEFI_crypto.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_crypto.py) and [WUEFI_crypto_sbsign.py](https://github.com/carlos-a-g-h/win32-stuff/blob/main/WUEFI_crypto_sbsign.py) are cryptographic modules for the WUEFI group
