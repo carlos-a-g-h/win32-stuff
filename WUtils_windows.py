@@ -122,12 +122,14 @@ def from_text_extract_identifier(
 
 	guid_start=text.find("{")
 	if guid_start==-1:
+		print("Error",1)
 		if just_check:
 			return False
 		return None
 
 	guid_end=text[guid_start+1:].find("}")
 	if not guid_end==36:
+		print("Error",2)
 		if just_check:
 			return False
 		return None
@@ -138,14 +140,15 @@ def from_text_extract_identifier(
 		return_data=True
 	)
 	if guid_str is None:
+		print("Error",3)
 		if just_check:
 			return False
 		return None
 
 	if just_check:
-		return False
+		return True
 
-	return None
+	return guid_str
 
 
 ###############################################################################

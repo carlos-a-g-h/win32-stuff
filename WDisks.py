@@ -829,7 +829,7 @@ def get_volume(
 		volume_name:str,
 		# get_partitions:bool=False,
 		debug:bool=True,
-	):
+	)->Mapping:
 
 	# Get volume data
 
@@ -1164,7 +1164,7 @@ def mount_esp_partition(letter:str,debug=False):
 def from_mountpoint_get_volume(
 		letter_or_path:str,
 		return_uuid:bool=False,
-		debug=False
+		debug:bool=False
 	)->Optional[str]:
 
 	# Given a mountpoint or a dirpath, get wether a volume is mounted or not
@@ -1175,14 +1175,17 @@ def from_mountpoint_get_volume(
 			"/L"
 	]
 	result=wsubproc(command,verbose=debug)
-	if not result==0:
+	if not result[0]==0:
 		return None
-
 
 	trimmed=result[1].strip()
 
 	vol_id=from_str_extract_uuid(trimmed)
 	if vol_id is None:
+		msg="Volume not found in STDOUT...?"
+		if debug:
+			raise ValueError(msg)
+		print("Error:",msg)
 		return None
 
 	if return_uuid:
@@ -1193,4 +1196,92 @@ def from_mountpoint_get_volume(
 
 	return trimmed
 
+def from_mountpoint_get_volume_ex(
+		letter_or_path:str,
+		get_spm:bool=False,
+		debug:bool=False,
+	)->Mapping:
 
+	# Given a mountpoint or a dirpath, get all the data about a volume if found
+	# NOTE:
+	# get_SPM (Single Partition Match) returns the single matching partition
+	# that corresponds to the volume
+
+	command=[
+		"mountvol",
+			letter_or_path,
+			"/L"
+	]
+	result=wsubproc(command,verbose=debug)
+	if not result[0]==0:
+		return {}
+
+	volume_name=result[1].strip()
+
+	if not from_str_extract_uuid(
+			volume_name,
+			just_check=True
+		):
+		msg="Volume not found in STDOUT...?"
+		if debug:
+			raise ValueError(msg)
+		print("Error:",msg)
+		return {}
+
+	k32=init_kernel32()
+
+	volume=get_volume(k32,volume_name,debug=debug)
+
+	if get_spm:
+
+		disks_involved=[]
+
+		if not len(volume.get("volume_extents",[]))==1:
+			return volume
+
+		disk_number=volume["volume_extents"][0].get("DiskNumber")
+		if disk_number<0:
+			return volume
+
+		disks_involved.append(disk_number)
+
+		parts_involved={}
+
+		for disk in disks_involved:
+
+			if disk in parts_involved.keys():
+				continue
+
+			parts_involved.update({
+				disk:get_disk_partitions(k32,disk,debug=debug)
+			})
+
+
+		if not len(volume.get("volume_extents",[]))==1:
+			return volume
+
+		disk_number=volume["volume_extents"][0].get("DiskNumber")
+		if disk_number<0:
+			return volume
+
+		if disk_number not in parts_involved.keys():
+			return volume
+
+		extent_start=volume["volume_extents"][0].get("StartingOffset",-1)
+		if not extent_start>0:
+			return volume
+
+		extent_length=volume["volume_extents"][0].get("ExtentLength",-1)
+		if not extent_length>0:
+			return volume
+
+		volume["volume_extents"].append(
+			get_single_partition_from_extents(
+				k32,
+				disk_number,
+				extent_start,
+				extent_length,
+			)
+		)
+
+	return volume
