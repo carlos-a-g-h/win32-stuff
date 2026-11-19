@@ -23,9 +23,12 @@ IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS = 0x00560000
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 OPEN_EXISTING = 3
 
+FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 FILE_SHARE_READ = 0x00000001
 FILE_SHARE_WRITE = 0x00000002
 GENERIC_READ = 0x80000000
+
+VOLUME_NAME_GUID = 0x1
 
 ERROR_ACCESS_DENIED=5
 ERROR_FILE_NOT_FOUND=2
@@ -145,6 +148,13 @@ def init_kernel32()->WinDLL:
 	k32.FindVolumeClose.argtypes = [wintypes.HANDLE]
 	k32.FindVolumeClose.restype = wintypes.BOOL
 
+	# GetFinalPathNameByHandleW
+
+	k32.GetFinalPathNameByHandleW.argtypes = [
+		wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD
+	]
+	k32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+
 	# GetLogicalDriveStrings
 
 	k32.GetLogicalDriveStringsW.argtypes=[
@@ -167,6 +177,13 @@ def init_kernel32()->WinDLL:
 	]
 	k32.GetVolumeInformationW.restype = wintypes.BOOL
 
+	# GetVolumeNameForVolumeMountPointW
+
+	k32.GetVolumeNameForVolumeMountPointW.argtypes = [
+		wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD
+	]
+	k32.GetVolumeNameForVolumeMountPointW.restype = wintypes.BOOL
+
 	# GetVolumePathNamesForVolumeNameW
 
 	k32.GetVolumePathNamesForVolumeNameW.argtypes=[
@@ -176,6 +193,18 @@ def init_kernel32()->WinDLL:
 		ctypes.POINTER(wintypes.DWORD)
 	]
 	k32.GetVolumePathNamesForVolumeNameW.restype=wintypes.BOOL
+
+	# GetVolumePathNameW
+
+	k32.GetVolumePathNameW.argtypes = [
+		wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD
+	]
+	k32.GetVolumePathNameW.restype = wintypes.BOOL
+
+	# GetWindowsDirectoryW
+
+	k32.GetWindowsDirectoryW.argtypes = [wintypes.LPWSTR, wintypes.UINT]
+	k32.GetWindowsDirectoryW.restype = wintypes.UINT
 
 	return k32
 
@@ -352,9 +381,14 @@ def get_disk_partitions(
 		offset=entry_offset+idx*entry_size
 
 		part_style=int.from_bytes(
-			buffer_ok.raw[offset:offset+8],
+			# buffer_ok.raw[offset:offset+8],
+			buffer_ok.raw[offset:offset+4],
 			byteorder="little",
 		)
+		part_active=False
+		if part_style==0:
+			part_active=bool(buffer_ok.raw[offset+33])
+	
 		part_start=int.from_bytes(
 			buffer_ok.raw[offset+8:offset+16],
 			byteorder="little",
@@ -387,6 +421,7 @@ def get_disk_partitions(
 			"part_num":part_num,
 			"part_start":part_start,
 			"part_len":part_len,
+			"part_active":part_active,
 			"part_style":part_style,
 			"part_style_name":part_style_name,
 			"part_guid":part_guid,
@@ -551,12 +586,12 @@ def get_single_partition_from_extents(
 		if plist is None:
 			if return_int:
 				return -1
-			return None
+			return {}
 
 		if len(plist)==0:
 			if return_int:
 				return -1
-			return None
+			return {}
 
 	pp={}
 	part_num_ok=-1
@@ -604,7 +639,6 @@ def get_single_partition_from_extents(
 def get_volume_extents(
 		kernel32:Optional[WinDLL],
 		volume_name:str,
-		# get_sp:bool=False,
 		debug:bool=False,
 	)->list:
 
@@ -827,7 +861,6 @@ def get_volume_filesystem(
 def get_volume(
 		kernel32:WinDLL,
 		volume_name:str,
-		# get_partitions:bool=False,
 		debug:bool=True,
 	)->Mapping:
 
@@ -855,6 +888,71 @@ def get_volume(
 		vol.update({"volume_extents":volume_extents})
 
 	return vol
+
+def get_volume_ex(
+		k32:Optional[WinDLL],
+		volume_name:str,
+		get_spm:bool=False,
+		debug:bool=True
+	)->Mapping:
+
+	volume=get_volume(k32,volume_name,debug=debug)
+
+	if get_spm:
+
+		disks_involved=[]
+
+		if not len(volume.get("volume_extents",[]))==1:
+			return volume
+
+		disk_number=volume["volume_extents"][0].get("DiskNumber")
+		if disk_number<0:
+			return volume
+
+		disks_involved.append(disk_number)
+
+		parts_involved={}
+
+		for disk in disks_involved:
+
+			if disk in parts_involved.keys():
+				continue
+
+			parts_involved.update({
+				disk:get_disk_partitions(k32,disk,debug=debug)
+			})
+
+
+		if not len(volume.get("volume_extents",[]))==1:
+			return volume
+
+		disk_number=volume["volume_extents"][0].get("DiskNumber")
+		if disk_number<0:
+			return volume
+
+		if disk_number not in parts_involved.keys():
+			return volume
+
+		extent_start=volume["volume_extents"][0].get("StartingOffset",-1)
+		if not extent_start>0:
+			return volume
+
+		extent_length=volume["volume_extents"][0].get("ExtentLength",-1)
+		if not extent_length>0:
+			return volume
+
+		spm=get_single_partition_from_extents(
+			k32,
+			disk_number,
+			extent_start,
+			extent_length,
+		)
+		if len(spm)==0:
+			return volume
+
+		volume["volume_extents"].append(spm)
+
+	return volume
 
 def enum_volumes(
 		kernel32:Optional[WinDLL],
@@ -1082,6 +1180,164 @@ def enum_drive_roots(
 
 	return drives
 
+###############################################################################
+
+# Specific Windows Volumes
+
+def get_winvol_system(
+		kernel32:Optional[WinDLL]=None,
+		get_spm:bool=False,
+		get_voldata:bool=False,
+		debug:bool=False
+	)->Union[Optional[str],Mapping]:
+
+	# Gets the volume where the system files reside, Usually the C:\ drive
+
+	k32:Optional[WinDLL]=kernel32
+
+	if k32 is None:
+	
+		k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+		k32.GetWindowsDirectoryW.argtypes = [wintypes.LPWSTR, wintypes.UINT]
+		k32.GetWindowsDirectoryW.restype = wintypes.UINT
+
+		k32.GetVolumePathNameW.argtypes = [
+			wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD
+		]
+		k32.GetVolumePathNameW.restype = wintypes.BOOL
+
+		k32.GetVolumeNameForVolumeMountPointW.argtypes = [
+			wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD
+		]
+		k32.GetVolumeNameForVolumeMountPointW.restype = wintypes.BOOL
+
+	BUF_SIZE = 32768
+
+	buf = ctypes.create_unicode_buffer(BUF_SIZE)
+	n = k32.GetWindowsDirectoryW(buf, BUF_SIZE)
+	if (not n) or (not n<BUF_SIZE):
+		util_winerror(debug=debug)
+		if get_voldata:
+			return {}
+		return None
+
+	mount = ctypes.create_unicode_buffer(BUF_SIZE)
+	if not k32.GetVolumePathNameW(buf.value, mount, BUF_SIZE):
+		util_winerror(debug=debug)
+		if get_voldata:
+			return {}
+		return None
+
+	guid = ctypes.create_unicode_buffer(BUF_SIZE)
+	if not k32.GetVolumeNameForVolumeMountPointW(
+			mount.value,
+			guid,
+			BUF_SIZE
+		):
+		util_winerror(debug=debug)
+
+	volume_name=guid.value
+
+	if get_voldata:
+
+		return get_volume_ex(
+			k32,volume_name,
+			get_spm=get_spm,
+			debug=debug
+		)
+
+	return volume_name
+
+def get_winvol_boot(
+		kernel32:Optional[WinDLL]=None,
+		get_spm:bool=False,
+		get_voldata:bool=False,
+		debug:bool=False
+	)->Union[Optional[str],Mapping]:
+
+	# Gets the volume that corresponds with the boot partition. In UEFI systems
+	# this is known as the ESP
+
+	k32:Optional[WinDLL]=kernel32
+
+	if k32 is None:
+	
+		k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+		k32.CloseHandle.argtypes=[wintypes.HANDLE]
+		k32.CloseHandle.restype=wintypes.BOOL
+
+		k32.CreateFileW.argtypes=[
+			wintypes.LPCWSTR,
+			wintypes.DWORD,
+			wintypes.DWORD,
+			wintypes.LPVOID,
+			wintypes.DWORD,
+			wintypes.DWORD,
+			wintypes.HANDLE
+		]
+		k32.CreateFileW.restype=wintypes.HANDLE
+
+		k32.GetFinalPathNameByHandleW.argtypes = [
+			wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD
+		]
+		k32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+
+
+	path="\\\\?\\Global\\SystemPartition\\"
+	handle=k32.CreateFileW(
+		path,
+		0,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		None,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		None,
+	)
+	if handle==INVALID_HANDLE_VALUE:
+		util_winerror(debug=debug)
+		if get_voldata:
+			return {}
+		return None
+
+	BUF_SIZE = 32768
+
+	buf=ctypes.create_unicode_buffer(BUF_SIZE)
+
+	n = k32.GetFinalPathNameByHandleW(
+		handle,
+		buf,
+		BUF_SIZE,
+		VOLUME_NAME_GUID
+	)
+
+	if (not n) or (not n<BUF_SIZE):
+		werror=util_winerror(return_code=True,debug=debug)
+		k32.CloseHandle(handle)
+		if debug:
+			raise WinError(werror)
+		print("WinError",werror)
+		if get_voldata:
+			return {}
+		return None
+
+	volume_name=buf.value
+
+	k32.CloseHandle(handle)
+
+	if get_voldata:
+
+		k32_ex=init_kernel32()
+
+		return get_volume_ex(
+			k32_ex,
+			volume_name,
+			get_spm=get_spm,
+			debug=debug
+		)
+
+	return volume_name
 
 ###############################################################################
 
@@ -1230,58 +1486,14 @@ def from_mountpoint_get_volume_ex(
 
 	k32=init_kernel32()
 
-	volume=get_volume(k32,volume_name,debug=debug)
+	return get_volume_ex(
+		k32,volume_name,
+		get_spm=get_spm,
+		debug=debug
+	)
 
-	if get_spm:
+# if __name__=="__main__":
 
-		disks_involved=[]
+# 	x=get_winvol_boot(get_voldata=True,get_spm=True)
 
-		if not len(volume.get("volume_extents",[]))==1:
-			return volume
-
-		disk_number=volume["volume_extents"][0].get("DiskNumber")
-		if disk_number<0:
-			return volume
-
-		disks_involved.append(disk_number)
-
-		parts_involved={}
-
-		for disk in disks_involved:
-
-			if disk in parts_involved.keys():
-				continue
-
-			parts_involved.update({
-				disk:get_disk_partitions(k32,disk,debug=debug)
-			})
-
-
-		if not len(volume.get("volume_extents",[]))==1:
-			return volume
-
-		disk_number=volume["volume_extents"][0].get("DiskNumber")
-		if disk_number<0:
-			return volume
-
-		if disk_number not in parts_involved.keys():
-			return volume
-
-		extent_start=volume["volume_extents"][0].get("StartingOffset",-1)
-		if not extent_start>0:
-			return volume
-
-		extent_length=volume["volume_extents"][0].get("ExtentLength",-1)
-		if not extent_length>0:
-			return volume
-
-		volume["volume_extents"].append(
-			get_single_partition_from_extents(
-				k32,
-				disk_number,
-				extent_start,
-				extent_length,
-			)
-		)
-
-	return volume
+# 	print(x)

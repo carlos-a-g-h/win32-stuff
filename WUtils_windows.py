@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+from pathlib import Path,WindowsPath
+
 from typing import Callable,Union,Optional
 
 import ctypes
@@ -168,7 +170,10 @@ def wsubproc(
 		encoding="oem"
 	)
 
-def copy_files(path1:Path,path2:Path)->bool:
+def copy_files(
+		path1:Union[Path,WindowsPath],
+		path2:Union[Path,WindowsPath]
+	)->bool:
 
 	if not path1.exists():
 		return False
@@ -181,16 +186,17 @@ def copy_files(path1:Path,path2:Path)->bool:
 				"xcopy",
 					str(path1),
 					str(path2),
-					"/E","/Y",
+					"/E","/Y","/I"
 			],
 			verbose=True
 		)
 		return result[0]==0
 
 	result=wsubproc([
-			"copy","/Y",
+			"cmd","/c",
+				"copy","/Y",
 				str(path1),
-				str(path2)
+				str(path2),
 		],
 		verbose=True
 	)

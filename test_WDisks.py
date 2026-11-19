@@ -39,7 +39,7 @@ if __name__=="__main__":
 		print("\nVOLUME:",v)
 
 
-	target_letter=r"Y:\\"
+	target_letter=r"C:\\"
 
 	volname=from_mountpoint_get_volume(target_letter,debug=True)
 	print("\nSPECIFIC VOLUME IN",target_letter,volname)
