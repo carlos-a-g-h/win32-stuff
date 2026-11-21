@@ -7,7 +7,10 @@ from WDisks import (
 	enum_drive_roots,
 	get_free_mountpoint,
 	from_mountpoint_get_volume,
-	from_mountpoint_get_volume_ex
+	from_mountpoint_get_volume_ex,
+
+	get_winvol_boot,
+	get_winvol_system
 )
 
 from WPrivilege import env_gain_extra_priv,query_proc_priv_info
@@ -22,9 +25,14 @@ if __name__=="__main__":
 
 	k=init_kernel32()
 
+	print("\n[ WINVOLs ]")
+	winvol1=get_winvol_boot(get_spm=True,get_voldata=True)
+	print("\nBOOT VOL:",winvol1)
+	winvol2=get_winvol_system(get_spm=True,get_voldata=True)
+	print("\nSYSTEM VOL:",winvol2)
+
 	print("\n[ DRIVE LETTERS ]")
 	enum_drive_roots(k,debug=True)
-
 	nfl=get_free_mountpoint(k,ret_as_path=True)
 	print("\nNEXT FREE DRIVE LETTER:",nfl)
 
@@ -38,9 +46,7 @@ if __name__=="__main__":
 	for v in vols:
 		print("\nVOLUME:",v)
 
-
 	target_letter=r"C:\\"
-
 	volname=from_mountpoint_get_volume(target_letter,debug=True)
 	print("\nSPECIFIC VOLUME IN",target_letter,volname)
 

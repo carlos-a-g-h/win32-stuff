@@ -163,6 +163,16 @@ def init_kernel32()->WinDLL:
 	]
 	k32.GetLogicalDriveStringsW.restype = wintypes.DWORD
 
+	# GetDiskFreeSpaceExW
+
+	k32.GetDiskFreeSpaceExW.argtypes=[
+		wintypes.LPCWSTR,
+		ctypes.POINTER(ctypes.c_ulonglong),
+		ctypes.POINTER(ctypes.c_ulonglong),
+		ctypes.POINTER(ctypes.c_ulonglong),
+	]
+	k32.GetDiskFreeSpaceExW.restype=wintypes.BOOL
+
 	# GetVolumeInformationW
 
 	k32.GetVolumeInformationW.argtypes = [
@@ -858,6 +868,66 @@ def get_volume_filesystem(
 
 	return buffer.value
 
+def get_volume_space(
+		kernel32:Optional[WinDLL],
+		vol_name_or_path:str,
+		as_tuple:bool=False,
+		debug:bool=False
+	)->Mapping:
+
+	# Returns Total, Free and Used space in a volume
+
+	k32:Optional[WinDLL]=kernel32
+
+	if k32 is None:
+
+		k32.GetDiskFreeSpaceExW.argtypes=[
+			wintypes.LPCWSTR,
+			ctypes.POINTER(ctypes.c_ulonglong),
+			ctypes.POINTER(ctypes.c_ulonglong),
+			ctypes.POINTER(ctypes.c_ulonglong),
+		]
+		k32.GetDiskFreeSpaceExW.restype=wintypes.BOOL
+
+	root:Optional[str]=None
+	ok=vol_name_or_path.endswith("\\")
+	if ok:
+		root=vol_name_or_path
+	if not ok:
+		root=vol_name_or_path+"\\"
+
+	_atc=ctypes.c_ulonglong()
+	_total=ctypes.c_ulonglong()
+	_free=ctypes.c_ulonglong()
+
+	ok=k32.GetDiskFreeSpaceExW(
+		root,
+		ctypes.byref(_atc),
+		ctypes.byref(_total),
+		ctypes.byref(_free)
+	)
+	if not ok:
+		util_winerror(debug=debug)
+		if as_tuple:
+			return None
+		return {}
+
+	total=_total.value
+	free=_free.value
+	used=total-free
+
+	if as_tuple:
+
+		# TOTAL, USED, FREE
+
+		return (total,used,free)
+
+	return {
+		"total":total,
+		"used":used,
+		"free":free
+	}
+
 def get_volume(
 		kernel32:WinDLL,
 		volume_name:str,
@@ -870,6 +940,10 @@ def get_volume(
 		"volume_name":volume_name,
 		"volume_guid":from_str_extract_uuid(volume_name)
 	}
+
+	volume_tfu=get_volume_space(kernel32,volume_name,as_tuple=True)
+	if volume_tfu is not None:
+		vol.update({"volume_space":volume_tfu})
 
 	volume_fs=get_volume_filesystem(kernel32,volume_name)
 	if volume_fs is not None:
@@ -890,7 +964,7 @@ def get_volume(
 	return vol
 
 def get_volume_ex(
-		k32:Optional[WinDLL],
+		k32:WinDLL,
 		volume_name:str,
 		get_spm:bool=False,
 		debug:bool=True
@@ -1412,7 +1486,7 @@ def mount_esp_partition(letter:str,debug=False):
 	]
 
 	result=wsubproc(command,verbose=debug)
-	if not result==0:
+	if not result[0]==0:
 		return False
 
 	return True
